@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>1→6 순서 터치 (랜덤 6분할)</title>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --cell:#121a2d;
+      --cell2:#0e1526;
+      --ok:#22c55e;
+      --err:#ef4444;
+      --ink:#e5e7eb;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0}
+    body{
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      user-select:none;
+      touch-action: manipulation;
+      overflow: hidden;
+    }
+
+    /* HUD (오버레이) */
+    .hud{
+      position: fixed; inset: 0 0 auto 0; height: 56px;
+      display:flex; align-items:center; justify-content:center; gap:16px;
+      pointer-events: none;
+      z-index: 2;
+      background: linear-gradient(180deg, rgba(0,0,0,.45), transparent);
+      font-variant-numeric: tabular-nums;
+    }
+    .pill{ pointer-events:auto; background:#ffffff1a; border:1px solid #ffffff30; padding:6px 10px; border-radius:999px; }
+    .pill strong{letter-spacing:.3px}
+    .btn{ pointer-events:auto; border:1px solid #ffffff30; background:#ffffff12; color:var(--ink); padding:8px 12px; border-radius:12px; font-weight:700; }
+    .toast{
+      position: fixed; inset: auto 0 env(safe-area-inset-bottom) 0;
+      display:flex; justify-content:center; padding: 10px 0;
+      pointer-events:none; z-index:3;
+    }
+    .toast .box{
+      pointer-events:auto; background:#00000055; border:1px solid #ffffff26;
+      padding:8px 12px; border-radius:12px; font-variant-numeric: tabular-nums;
+    }
+    .good{color:var(--ok)} .bad{color:var(--err)}
+
+    /* Full-screen 6-split grid */
+    .grid{
+      position: fixed; inset:0;
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+    }
+    .cell{
+      display:flex; align-items:center; justify-content:center;
+      font-size: clamp(44px, 14vw, 120px);
+      font-weight: 900; letter-spacing: .5px;
+      border: 1px solid #ffffff18;
+      background: radial-gradient(60% 60% at 50% 30%, #ffffff06 0%, transparent 100%), linear-gradient(180deg, var(--cell), var(--cell2));
+      transition: transform .02s ease, filter .2s ease, background .3s ease, outline-color .1s ease;
+    }
+    .cell:active{ transform: scale(.985) }
+    .cell.done{
+      outline: 4px solid #22c55e55;
+      filter: brightness(1.1);
+    }
+    .grid.shake{ animation:shake .25s linear }
+    @keyframes shake{
+      15%, 45%, 75% { transform: translateX(-6px) }
+      30%, 60%, 90% { transform: translateX(6px) }
+    }
+    .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
+  </style>
+</head>
+<body>
+  <div class="hud" aria-live="polite">
+    <div class="pill">시간 <strong id="time">0.000s</strong></div>
+    <div class="pill">Best <strong id="best">—</strong></div>
+    <button class="btn" id="restartBtn" type="button" aria-label="다시하기">↻ 다시</button>
+  </div>
+
+  <div class="grid" id="grid" aria-label="터치 그리드 (1부터 6까지 순서대로 누르기)">
+    <!-- JS가 1~6을 랜덤 셔플하여 버튼을 렌더링 -->
+  </div>
+
+  <div class="toast" aria-live="polite">
+    <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
+  </div>
+
+  <script>
+    const $ = s => document.querySelector(s);
+    const $$ = s => Array.from(document.querySelectorAll(s));
+
+    const grid = $('#grid');
+    const timeEl = $('#time');
+    const bestEl = $('#best');
+    const msgEl = $('#msg');
+
+    let next = 1;
+    let running = false;
+    let startTime = 0;
+    let raf = null;
+    const LS_KEY = 'sixSplitBestMs';
+
+    function init(){
+      loadBest();
+      renderShuffled();
+      bindHud();
+      reset(false);
+    }
+
+    function bindHud(){
+      $('#restartBtn').addEventListener('click', () => {
+        vibrate(10);
+        renderShuffled(); // 재시작 시 새로 셔플
+        reset(true);
+      });
+    }
+
+    function renderShuffled(){
+      // 1..6 셔플
+      const arr = [1,2,3,4,5,6].sort(() => Math.random() - 0.5);
+      grid.innerHTML = '';
+      arr.forEach(n => {
+        const btn = document.createElement('button');
+        btn.className = 'cell';
+        btn.type = 'button';
+        btn.dataset.num = String(n);
+        btn.setAttribute('aria-label', String(n));
+        btn.textContent = String(n);
+        btn.addEventListener('pointerdown', onTap, {passive:true});
+        grid.appendChild(btn);
+      });
+    }
+
+    function onTap(e){
+      const val = Number(e.currentTarget.dataset.num);
+      if(val !== next){
+        wrong();
+        return;
+      }
+      // correct
+      e.currentTarget.classList.add('done');
+      if(next === 1){
+        startTimer();
+        msgEl.textContent = '진행 중…';
+      }
+      if(next === 6){
+        finish();
+        return;
+      }
+      next++;
+    }
+
+    function startTimer(){
+      running = true;
+      startTime = performance.now();
+      if(raf) cancelAnimationFrame(raf);
+      const tick = () => {
+        if(!running) return;
+        const ms = performance.now() - startTime;
+        timeEl.textContent = (ms/1000).toFixed(3) + 's';
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }
+
+    function stopTimer(){
+      running = false;
+      if(raf) cancelAnimationFrame(raf);
+      raf = null;
+    }
+
+    function finish(){
+      stopTimer();
+      const elapsed = performance.now() - startTime;
+      const sec = (elapsed/1000).toFixed(3);
+      timeEl.textContent = sec + 's';
+      saveBest(elapsed);
+      msgEl.innerHTML = `<span class="good">완료!</span> 기록: <b>${sec}s</b>`;
+      vibrate([20, 30, 60]);
+      next = 999; // lock
+    }
+
+    function wrong(){
+      grid.classList.add('shake');
+      msgEl.innerHTML = `<span class="bad">순서 오류</span> — 1부터 다시`;
+      vibrate([40, 50, 40]);
+      setTimeout(()=> grid.classList.remove('shake'), 260);
+      reset(false); // 레이아웃 유지 (요청 시 바꿀 수 있음)
+    }
+
+    function reset(){
+      stopTimer();
+      next = 1;
+      timeEl.textContent = '0.000s';
+      $$('.cell').forEach(c => c.classList.remove('done'));
+      msgEl.innerHTML = `<b>1</b>을 터치하면 시작`;
+    }
+
+    function loadBest(){
+      const v = Number(localStorage.getItem(LS_KEY) || 0);
+      if(v>0) bestEl.textContent = (v/1000).toFixed(3) + 's';
+    }
+
+    function saveBest(ms){
+      const old = Number(localStorage.getItem(LS_KEY) || Infinity);
+      if(ms < old){
+        localStorage.setItem(LS_KEY, String(ms));
+        bestEl.textContent = (ms/1000).toFixed(3) + 's';
+      }
+    }
+
+    function vibrate(pattern){
+      if('vibrate' in navigator) navigator.vibrate(pattern);
+    }
+
+    init();
+  </script>
+</body>
+</html>
