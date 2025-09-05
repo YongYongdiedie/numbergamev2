@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (화이트 테마)</title>
+  <title>1→6 순서 터치 (화이트 테마 + 서버 + 랭킹)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
-      --ok:#22c55e; --err:#ef4444; --ink:#000000; --muted:#555555;
+      --ok:#16a34a; --err:#ef4444; --ink:#000000; --muted:#555555;
       --panel:#ffffffee; --border:#00000033;
     }
     *{box-sizing:border-box}
@@ -21,8 +21,9 @@
       position: fixed; left:0; right:0; top:0; z-index: 3;
       display:flex; flex-wrap: wrap; align-items:center; justify-content:center; gap:8px 10px;
       padding: calc(8px + env(safe-area-inset-top)) 10px 8px;
-      background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.6) 40%, transparent);
+      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.7) 40%, transparent);
       font-variant-numeric: tabular-nums;
+      border-bottom: 1px solid var(--border);
     }
     .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
     .pill{ background:#0000000a; border:1px solid #00000020; padding:6px 10px; border-radius:999px; }
@@ -33,7 +34,7 @@
     .status{ font-size:12px; color:var(--muted); }
     .status.ok{ color: var(--ok); } .status.err{ color: var(--err); }
     .toast{ position: fixed; inset: auto 0 calc(8px + env(safe-area-inset-bottom)) 0; display:flex; justify-content:center; padding: 6px 0; pointer-events:none; z-index:4; }
-    .toast .box{ background:#00000033; border:1px solid #00000026; padding:8px 12px; border-radius:12px; font-variant-numeric: tabular-nums; }
+    .toast .box{ background:#00000033; border:1px solid #00000026; padding:8px 12px; border-radius:12px; font-variant-numeric: tabular-nums; color:#000; }
     .good{color:var(--ok)} .bad{color:var(--err)}
     .grid{
       position: fixed; left:0; right:0; z-index:1;
@@ -48,16 +49,45 @@
       color: var(--ink);
     }
     .cell:active{ transform: scale(.985) }
-    .cell.done{ outline: 4px solid #22c55e55; filter: brightness(1.1); }
+    .cell.done{ outline: 4px solid #22c55e55; filter: brightness(1.06); }
     .grid.shake{ animation:shake .25s linear }
     @keyframes shake{ 15%, 45%, 75% { transform: translateX(-6px) } 30%, 60%, 90% { transform: translateX(6px) } }
     .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
+
+    /* Leaderboard panel */
+    .panel{
+      position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5;
+      width: min(420px, 92vw);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px #00000033;
+      padding: 10px;
+      display: none;
+      color: #000;
+    }
+    .panel.open{ display:block; }
+    .panel header{
+      display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;
+    }
+    .panel h3{ margin:0; font-size:16px; letter-spacing:.2px }
+    .panel .close{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:6px 10px; border-radius:10px; font-weight:700; }
+    .table{
+      width:100%; border-collapse: collapse; font-variant-numeric: tabular-nums;
+    }
+    .table th, .table td{
+      border-bottom:1px solid #0000001a; padding:6px 4px; text-align:left;
+    }
+    .table th{ color:#111827; font-size:12px; }
+    .table td.rank{ width:2.5ch; text-align:right; }
+    .table td.time{ text-align:right; font-weight:800; }
+    .dim{ color:#4b5563; font-size:12px; }
 
     /* Intro overlay */
     .intro{
       position: fixed; inset:0; z-index: 10;
       display:flex; align-items:center; justify-content:center;
-      background: rgba(0,0,0,.5);
+      background: rgba(0,0,0,.45);
       padding: 20px;
     }
     .intro .sheet{
@@ -113,8 +143,29 @@
     </div>
   </div>
 
+  <!-- Leaderboard panel -->
+  <div class="panel" id="panel">
+    <header>
+      <h3>Top 10 랭킹</h3>
+      <div>
+        <button class="btn" id="refreshBtn" type="button">새로고침</button>
+        <button class="close" id="closePanel" type="button">닫기</button>
+      </div>
+    </header>
+    <div id="boardWrap">
+      <div class="dim">랭킹을 불러오는 중…</div>
+    </div>
+    <div class="dim" id="boardInfo" style="margin-top:6px;"></div>
+  </div>
+
   <script>
-    const API_BASE = "https://script.google.com/macros/s/AKfycbzZX4U6jAOZzr4gGPSFbZcSox9qDG-f-qIpl75vyqmkIFSHiRsexl7KdkObPDY_hFyG/exec";
+    // 1) 여기에 본인 Apps Script /exec URL을 넣으세요.
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+    // 2) (선택) 주소창에 ?api=... 로도 주입 가능. 또는 한번 넣으면 로컬에 저장.
+    const PARAM_API = new URLSearchParams(location.search).get('api');
+    if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
+    const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
+
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
 
@@ -126,30 +177,267 @@
     const nameInput = $('#playerName');
     const saveNameBtn = $('#saveNameBtn');
     const serverStatus = $('#serverStatus');
-    const intro = $('#intro'); const introOk = $('#introOk');
 
-    let next=1,running=false,startTime=0,raf=null;
-    const LS_NAME='sixSplitPlayerName';
+    const panel = $('#panel');
+    const leaderBtn = $('#leaderBtn');
+    const refreshBtn = $('#refreshBtn');
+    const closePanel = $('#closePanel');
+    const boardWrap = $('#boardWrap');
+    const boardInfo = $('#boardInfo');
 
-    function resizeLayout(){grid.style.top=hud.offsetHeight+'px';grid.style.bottom='0px';}
-    window.addEventListener('resize',resizeLayout);
-    window.addEventListener('orientationchange',()=>setTimeout(resizeLayout,200));
+    const intro = $('#intro');
+    const introOk = $('#introOk');
+
+    let next = 1;
+    let running = false;
+    let startTime = 0;
+    let raf = null;
+    const LS_NAME = 'sixSplitPlayerName';
+
+    function resizeLayout(){
+      const h = hud.offsetHeight;
+      grid.style.top = h + 'px';
+      grid.style.bottom = '0px';
+    }
+    window.addEventListener('resize', resizeLayout);
+    window.addEventListener('orientationchange', () => setTimeout(resizeLayout, 200));
 
     function init(){
-      const stored=localStorage.getItem(LS_NAME)||'';if(stored)nameInput.value=stored;
-      bind();render();reset(false);resizeLayout();
+      const stored = localStorage.getItem(LS_NAME) || '';
+      if (stored) nameInput.value = stored;
+
+      bindHud();
+      bindIntro();
+      renderShuffled();
+      reset(false);
+      updateServerStatus();
+
+      if (getApi() && nameInput.value.trim()) {
+        fetchBestFromServer(nameInput.value.trim());
+      }
+
+      requestAnimationFrame(resizeLayout);
+      setTimeout(resizeLayout, 250);
     }
-    function bind(){
-      introOk.addEventListener('click',()=>intro.style.display='none');
-      $('#restartBtn').addEventListener('click',()=>{render();reset(true)});
+
+    function bindIntro(){
+      introOk.addEventListener('click', () => {
+        intro.style.display = 'none';
+        vibrate(10);
+      });
     }
-    function render(){grid.innerHTML='';[1,2,3,4,5,6].sort(()=>Math.random()-.5).forEach(n=>{const b=document.createElement('button');b.className='cell';b.type='button';b.dataset.num=n;b.textContent=n;b.addEventListener('pointerdown',tap,{passive:true});grid.appendChild(b)});}
-    function tap(e){if(intro.style.display!=='none')return;const v=Number(e.currentTarget.dataset.num);if(v!==next){wrong();return;}e.currentTarget.classList.add('done');if(next===1){startTimer();msgEl.textContent='진행 중…';}if(next===6){finish();return;}next++;}
-    function startTimer(){running=true;startTime=performance.now();if(raf)cancelAnimationFrame(raf);const tick=()=>{if(!running)return;timeEl.textContent=((performance.now()-startTime)/1000).toFixed(3)+'s';raf=requestAnimationFrame(tick)};raf=requestAnimationFrame(tick);}
-    function stopTimer(){running=false;if(raf)cancelAnimationFrame(raf);raf=null;}
-    function finish(){stopTimer();const elapsed=performance.now()-startTime;timeEl.textContent=(elapsed/1000).toFixed(3)+'s';msgEl.innerHTML='<span class="good">완료!</span>';next=999;}
-    function wrong(){grid.classList.add('shake');msgEl.innerHTML='<span class="bad">순서 오류</span>';setTimeout(()=>grid.classList.remove('shake'),260);reset(false);}
-    function reset(){stopTimer();next=1;timeEl.textContent='0.000s';$$('.cell').forEach(c=>c.classList.remove('done'));msgEl.innerHTML='<b>1</b>을 터치하면 시작';}
+
+    function bindHud(){
+      $('#restartBtn').addEventListener('click', () => {
+        vibrate(10);
+        renderShuffled();
+        reset(true);
+      });
+      saveNameBtn.addEventListener('click', () => {
+        const name = nameInput.value.trim();
+        localStorage.setItem(LS_NAME, name);
+        if (getApi() && name) fetchBestFromServer(name);
+      });
+      leaderBtn.addEventListener('click', async () => {
+        panel.classList.add('open');
+        boardWrap.innerHTML = '<div class="dim">랭킹을 불러오는 중…</div>';
+        await fetchTop10();
+      });
+      refreshBtn.addEventListener('click', fetchTop10);
+      closePanel.addEventListener('click', () => panel.classList.remove('open'));
+    }
+
+    function renderShuffled(){
+      const arr = [1,2,3,4,5,6].sort(() => Math.random() - 0.5);
+      grid.innerHTML = '';
+      arr.forEach(n => {
+        const btn = document.createElement('button');
+        btn.className = 'cell';
+        btn.type = 'button';
+        btn.dataset.num = String(n);
+        btn.setAttribute('aria-label', String(n));
+        btn.textContent = String(n);
+        btn.addEventListener('pointerdown', onTap, {passive:true});
+        grid.appendChild(btn);
+      });
+    }
+
+    function onTap(e){
+      if (intro.style.display !== 'none') return; // block while intro open
+      const val = Number(e.currentTarget.dataset.num);
+      if(val !== next){
+        wrong();
+        return;
+      }
+      e.currentTarget.classList.add('done');
+      if(next === 1){
+        startTimer();
+        msgEl.textContent = '진행 중…';
+      }
+      if(next === 6){
+        finish();
+        return;
+      }
+      next++;
+    }
+
+    function startTimer(){
+      running = true;
+      startTime = performance.now();
+      if(raf) cancelAnimationFrame(raf);
+      const tick = () => {
+        if(!running) return;
+        const ms = performance.now() - startTime;
+        timeEl.textContent = (ms/1000).toFixed(3) + 's';
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }
+
+    function stopTimer(){
+      running = false;
+      if(raf) cancelAnimationFrame(raf);
+      raf = null;
+    }
+
+    function finish(){
+      stopTimer();
+      const elapsed = performance.now() - startTime;
+      const sec = (elapsed/1000).toFixed(3);
+      timeEl.textContent = sec + 's';
+      msgEl.innerHTML = `<span class="good">완료!</span> 기록: <b>${sec}s</b>`;
+      vibrate([20, 30, 60]);
+      next = 999;
+
+      const name = nameInput.value.trim();
+      if (getApi() && name) {
+        saveBestToServer(name, Math.round(elapsed)).then(fetchTop10).catch(()=>{});
+      } else {
+        serverStatus.className = 'pill status err';
+        serverStatus.textContent = '서버: 미설정(저장 안 됨)';
+      }
+    }
+
+    function wrong(){
+      grid.classList.add('shake');
+      msgEl.innerHTML = `<span class="bad">순서 오류</span> — 1부터 다시`;
+      vibrate([40, 50, 40]);
+      setTimeout(()=> grid.classList.remove('shake'), 260);
+      reset(false);
+    }
+
+    function reset(){
+      stopTimer();
+      next = 1;
+      timeEl.textContent = '0.000s';
+      $$('.cell').forEach(c => c.classList.remove('done'));
+      msgEl.innerHTML = `<b>1</b>을 터치하면 시작`;
+    }
+
+    function getApi(){
+      const url = (API_BASE || '').trim();
+      return url && url.startsWith('http') ? url : '';
+    }
+
+    async function fetchBestFromServer(name){
+      try {
+        const url = `${getApi()}?name=${encodeURIComponent(name)}`;
+        const res = await fetch(url, { method: 'GET' });
+        const data = await res.json();
+        if (data && data.ok) {
+          const ms = Number(data.best_ms || 0);
+          bestEl.textContent = ms ? (ms/1000).toFixed(3) + 's' : '—';
+          serverStatus.className = 'pill status ok';
+          serverStatus.textContent = '서버: 연결됨';
+        } else {
+          throw new Error('bad response');
+        }
+      } catch (e) {
+        console.warn('fetch best failed', e);
+        serverStatus.className = 'pill status err';
+        serverStatus.textContent = '서버: 오류(조회 실패)';
+      }
+    }
+
+    async function saveBestToServer(name, ms){
+      try {
+        // text/plain to avoid preflight
+        const res = await fetch(getApi(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: JSON.stringify({ name, ms })
+        });
+        const data = await res.json();
+        if (data && data.ok) {
+          const best = Number(data.best_ms || 0);
+          bestEl.textContent = (best/1000).toFixed(3) + 's';
+          serverStatus.className = 'pill status ok';
+          serverStatus.textContent = '서버: 저장됨';
+        } else {
+          throw new Error('save failed');
+        }
+      } catch (e) {
+        console.warn('save best failed', e);
+        serverStatus.className = 'pill status err';
+        serverStatus.textContent = '서버: 오류(저장 실패)';
+      }
+    }
+
+    async function fetchTop10(){
+      if (!getApi()) return;
+      try {
+        const url = `${getApi()}?action=top&limit=10`;
+        const res = await fetch(url, { method: 'GET' });
+        const data = await res.json();
+        if (data && data.ok && Array.isArray(data.top)) {
+          const rows = data.top;
+          boardWrap.innerHTML = renderBoard(rows);
+          const now = new Date();
+          boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
+        } else {
+          throw new Error('bad leaderboard response');
+        }
+      } catch (e) {
+        console.warn('fetch top failed', e);
+        boardWrap.innerHTML = '<div class="dim">랭킹을 불러오지 못했습니다.</div>';
+      }
+    }
+
+    function renderBoard(rows){
+      if (!rows.length) return '<div class="dim">아직 기록이 없습니다.</div>';
+      const trs = rows.map((r, i) => {
+        const s = (Number(r.best_ms)/1000).toFixed(3);
+        const nm = escapeHtml(String(r.name || ''));
+        return `<tr>
+          <td class="rank">${i+1}</td>
+          <td class="name">${nm}</td>
+          <td class="time">${s}s</td>
+        </tr>`;
+      }).join('');
+      return `<table class="table">
+        <thead><tr><th>#</th><th>이름</th><th>기록</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>`;
+    }
+
+    function escapeHtml(str){
+      return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    function updateServerStatus(){
+      if (getApi()) {
+        serverStatus.className = 'pill status';
+        serverStatus.textContent = '서버: 확인 중…';
+      } else {
+        serverStatus.className = 'pill status err';
+        serverStatus.textContent = '서버: 미설정';
+      }
+    }
+
+    function vibrate(pattern){
+      if('vibrate' in navigator) navigator.vibrate(pattern);
+    }
+
     init();
   </script>
 </body>
