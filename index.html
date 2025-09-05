@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (게임화면 보장판)</title>
+  <title>1→6 순서 터치 (최종 체크 통합판)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
@@ -19,6 +19,7 @@
     }
     .hud{ position: fixed; left:0; right:0; top:0; z-index: 3; display:flex; flex-wrap: wrap; align-items:center; justify-content:center; gap:8px 10px; padding: calc(8px + env(safe-area-inset-top)) 10px 8px; background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.7) 40%, transparent); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--border); }
     .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
+    .grow{ flex:1 }
     .pill{ background:#0000000a; border:1px solid #00000020; padding:6px 10px; border-radius:999px; }
     .pill strong{letter-spacing:.3px}
     .btn{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:10px 14px; border-radius:12px; font-weight:700; }
@@ -36,7 +37,7 @@
     .grid.shake{ animation:shake .25s linear }
     @keyframes shake{ 15%, 45%, 75% { transform: translateX(-6px) } 30%, 60%, 90% { transform: translateX(6px) } }
     .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
-    .panel{ position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5; width: min(460px, 92vw); background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 10px; display: none; color: #000; }
+    .panel{ position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5; width: min(520px, 92vw); background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 10px; display: none; color: #000; }
     .panel.open{ display:block; }
     .panel header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
     .panel h3{ margin:0; font-size:16px; letter-spacing:.2px }
@@ -52,10 +53,9 @@
     .table td.ctrl{ width:1%; white-space:nowrap; text-align:right; }
     .dim{ color:#4b5563; font-size:12px; }
 
-    /* Intro toggle (CSS-only) */
+    /* Intro toggle */
     #introToggle{ position:absolute; opacity:0; width:0; height:0; }
     .intro{ position: fixed; inset:0; z-index: 10; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,.45); padding: 20px; }
-    /* default: show intro when checked */
     #introToggle:not(:checked) + .intro{ display:none; }
     .intro .sheet{ width: min(720px, 96vw); background: #ffffff; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 16px; color: #000; position:relative; z-index:2; }
     .intro h2{ margin: 0 0 8px 0; font-size: 18px; }
@@ -86,7 +86,7 @@
 </head>
 <body>
   <div id="hud" class="hud" aria-live="polite">
-    <div class="row">
+    <div class="row grow" style="justify-content:flex-start;">
       <div class="name">
         <span>이름</span>
         <input id="playerName" placeholder="예: JI-YONG" maxlength="24" autocomplete="off" autocapitalize="none">
@@ -119,7 +119,6 @@
     <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
   </div>
 
-  <!-- Intro: CSS toggle + JS fallback -->
   <input id="introToggle" type="checkbox" checked aria-hidden="true" />
   <div class="intro" id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle">
     <label class="backdrop" for="introToggle" aria-label="닫기"></label>
@@ -178,13 +177,12 @@
   </div>
 
   <script>
-    // Error surfacing
     window.addEventListener('error', function(e){
       const el = document.querySelector('#serverStatus');
       if (el){ el.className='pill status err'; el.textContent='스크립트 오류: ' + (e.message||''); }
     });
 
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbzN_mmkVDLnH7bBm9zppD9sFWgsrOaCX7rGlDY8fZFHM1kanacPFotifeC487T8ZP3n/exec";
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
     const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
@@ -222,21 +220,14 @@
       const introToggle = $('#introToggle');
       const intro = $('#intro');
       const closeIntro = ()=>{
-        if (introToggle) introToggle.checked = false;
-        if (intro) intro.style.display = 'none'; // JS 강제 닫기
-        renderShuffled(); // 혹시 몰라 한 번 더 보장
-        resizeLayout();
+        try{ introToggle.checked = false; }catch(_){}
+        if (intro) intro.style.display='none';
+        renderShuffled(); resizeLayout();
       };
-      // 버튼으로 닫기
       $('#introOk').addEventListener('click', closeIntro);
-      // 배경 탭으로 닫기 (라벨로 토글 + JS 백업)
       $('.backdrop').addEventListener('click', closeIntro);
-      // 페이지 임의 터치가 발생하면 3초 후에도 안 닫혀 있으면 닫기
       let armed=false;
-      const arm = ()=>{
-        if (armed) return; armed=true;
-        setTimeout(()=>{ if (intro && intro.style.display !== 'none') closeIntro(); }, 3000);
-      };
+      const arm=()=>{ if(armed) return; armed=true; setTimeout(()=>{ if (getComputedStyle(intro).display!=='none') closeIntro(); }, 2000); };
       window.addEventListener('pointerdown', arm, {passive:true});
       window.addEventListener('touchstart', arm, {passive:true});
     }
@@ -288,8 +279,9 @@
     }
 
     function onTap(e){
-      const introToggle = document.getElementById('introToggle');
-      if (introToggle && introToggle.checked) return;
+      const intro = document.getElementById('intro');
+      const introVisible = intro && getComputedStyle(intro).display !== 'none';
+      if (introVisible) return;
       if (saveModal.classList.contains('open')) return;
       const v=Number(e.currentTarget.dataset.num);
       if (v!==next){ wrong(); return; }
@@ -425,6 +417,7 @@
       globalBestTime.textContent=text; bestEl.textContent=text;
     }
 
+    // Top1~3 이름 1초 로테이션
     function setRotation(rows){
       const top3 = rows.slice(0,3).map(r => (String(r.name||'').trim()) ).filter(n => n.length>0);
       if (window._cycleTimer){ clearInterval(window._cycleTimer); window._cycleTimer=null; }
@@ -477,7 +470,6 @@
 
     function closeSaveModal(){ saveModal.classList.remove('open'); saveModal.setAttribute('aria-hidden','true'); }
     function openSaveModal(secText){
-      // secText 이미 "1.234" 형태이므로 s를 한 번만 붙임
       modalTime.textContent = secText + 's';
       modalName.value = (nameInput.value || localStorage.getItem(LS_NAME) || '').trim();
       saveModal.classList.add('open'); saveModal.setAttribute('aria-hidden','false');
