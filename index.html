@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (최종 · 로테이션 · 초강화 확인버튼)</title>
+  <title>1→6 순서 터치 (최종 · 로테이션 · JS 없이도 닫히는 안내)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
@@ -21,7 +21,7 @@
     .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
     .pill{ background:#0000000a; border:1px solid #00000020; padding:6px 10px; border-radius:999px; }
     .pill strong{letter-spacing:.3px}
-    .btn{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:10px 14px; border-radius:12px; font-weight:700; }
+    .btn{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:10px 14px; border-radius:12px; font-weight:700; cursor:pointer; }
     .name{ display:flex; gap:6px; align-items:center; background:#00000008; border:1px solid #00000020; padding:6px 10px; border-radius:999px; }
     .name input{ background:transparent; border:none; outline:none; color:var(--ink); width:150px; font-weight:700; font-size:16px; }
     .status{ font-size:12px; color:var(--muted); }
@@ -36,6 +36,8 @@
     .grid.shake{ animation:shake .25s linear }
     @keyframes shake{ 15%, 45%, 75% { transform: translateX(-6px) } 30%, 60%, 90% { transform: translateX(6px) } }
     .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
+
+    /* Panel */
     .panel{ position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5; width: min(460px, 92vw); background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 10px; display: none; color: #000; }
     .panel.open{ display:block; }
     .panel header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -52,13 +54,16 @@
     .table td.ctrl{ width:1%; white-space:nowrap; text-align:right; }
     .dim{ color:#4b5563; font-size:12px; }
 
-    /* Intro overlay */
+    /* Intro overlay (CSS toggle) */
+    #introToggle{ position:fixed; opacity:0; pointer-events:none; }
     .intro{ position: fixed; inset:0; z-index: 10; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,.45); padding: 20px; }
+    #introToggle:not(:checked) + .intro{ display:none; }
     .intro .sheet{ width: min(720px, 96vw); background: #ffffff; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 16px; color: #000; }
     .intro h2{ margin: 0 0 8px 0; font-size: 18px; }
     .intro p{ margin: 6px 0; line-height: 1.5; }
     .intro .note{ color:#16a34a; font-weight:600; }
     .intro .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+    .intro .backdrop{ position: absolute; inset:0; display:block; }
 
     /* Global best in the center */
     .globalBest{ position: fixed; left:50%; top:50%; transform: translate(-50%,-50%); z-index: 0; pointer-events: none; font-variant-numeric: tabular-nums; text-align: center; opacity: .1; }
@@ -75,7 +80,6 @@
     .modal .time{ font-weight:900; }
     .modal .name-line{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
     .modal input{ border:1px solid #00000030; background:#ffffff; color:#000; border-radius:10px; padding:8px 10px; font-size:16px; flex:1; min-width: 160px; }
-    .modal .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
 
     /* Rotation pill */
     .champ{ display:none; align-items:center; gap:6px; background:#fff7ed; border:1px solid #f97316; color:#9a3412; padding:6px 10px; border-radius:999px; font-weight:800; }
@@ -119,8 +123,11 @@
     <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
   </div>
 
-  <!-- Intro -->
+  <!-- Intro: CSS-only toggle -->
+  <input id="introToggle" type="checkbox" checked aria-hidden="true" />
   <div class="intro" id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle">
+    <!-- Click/tap backdrop to close (CSS label) -->
+    <label class="backdrop" for="introToggle" aria-label="닫기"></label>
     <div class="sheet">
       <h2 id="introTitle">게임 안내</h2>
       <p>1. 초록색 <span class="note">'서버:연결됨'</span>을 확인 후 시작하세요.</p>
@@ -128,7 +135,8 @@
       <p>3. 랭킹에 올리고 싶은 경우 이름을 입력하고 '저장'을 누르세요.</p>
       <p>4. '랭킹' 버튼을 누르면 Top10 기록이 표시됩니다.</p>
       <div class="actions">
-        <button class="btn" id="introOk" type="button" onclick="dismissIntro()" autofocus>확인</button>
+        <!-- Button that works without JS -->
+        <label class="btn" for="introToggle">확인</label>
       </div>
     </div>
   </div>
@@ -172,31 +180,16 @@
   </div>
 
   <script>
-    // Global error surfacing
+    // Error surfacing
     window.addEventListener('error', function(e){
       const el = document.querySelector('#serverStatus');
       if (el){ el.className='pill status err'; el.textContent='스크립트 오류: ' + (e.message||''); }
     });
 
-    // Expose dismissal globally + also tap outside to dismiss
-    function dismissIntro(){
-      var intro = document.getElementById('intro');
-      if (intro && intro.style.display !== 'none'){ intro.style.display='none'; try{ navigator.vibrate && navigator.vibrate(10); }catch(_){} }
-    }
-    // tap anywhere on overlay to dismiss
-    document.addEventListener('DOMContentLoaded', function(){
-      var intro = document.getElementById('intro');
-      intro.addEventListener('click', function(e){
-        // if user clicks dark background (not inner sheet), also dismiss
-        if (e.target === intro){ dismissIntro(); }
-      }, {passive:true});
-    });
-
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbzN_mmkVDLnH7bBm9zppD9sFWgsrOaCX7rGlDY8fZFHM1kanacPFotifeC487T8ZP3n/exec";
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
     const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
-    const TOP_DAYS = 7;
 
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
@@ -275,7 +268,9 @@
     }
 
     function onTap(e){
-      if (document.getElementById('intro').style.display!=='none') return;
+      // If intro still checked (visible), ignore taps
+      const introToggle = document.getElementById('introToggle');
+      if (introToggle && introToggle.checked) return;
       if (saveModal.classList.contains('open')) return;
       const v=Number(e.currentTarget.dataset.num);
       if (v!==next){ wrong(); return; }
@@ -379,44 +374,25 @@
     }
 
     // rotation
-    let cycleTimer=null, cycleIdx=0, cycleData=[];
     function setRotation(rows){
       const top3 = rows.slice(0,3).map(r => (String(r.name||'').trim()) ).filter(n => n.length>0);
-      cycleData = top3;
-      if (cycleTimer){ clearInterval(cycleTimer); cycleTimer=null; }
-      if (cycleData.length === 0){ champPill.style.display='none'; champName.textContent='—'; return; }
+      window._cycleData = top3;
+      if (window._cycleTimer){ clearInterval(window._cycleTimer); window._cycleTimer=null; }
+      if (top3.length === 0){ champPill.style.display='none'; champName.textContent='—'; return; }
       champPill.style.display='flex';
-      cycleIdx = 0;
-      renderChampionFrame(cycleIdx);
-      cycleTimer = setInterval(()=>{ cycleIdx = (cycleIdx + 1) % cycleData.length; renderChampionFrame(cycleIdx); }, 1000);
+      window._cycleIdx = 0;
+      renderChampionFrame(window._cycleIdx);
+      window._cycleTimer = setInterval(()=>{
+        window._cycleIdx = (window._cycleIdx + 1) % top3.length;
+        renderChampionFrame(window._cycleIdx);
+      }, 1000);
     }
     function renderChampionFrame(idx){
-      const name = cycleData[idx] || '—', rank = idx + 1;
+      const name = (window._cycleData && window._cycleData[idx]) || '—';
+      const rank = (idx % 3) + 1;
       champName.textContent = name; champLabel.textContent = `${rank}위`;
       champEmojiL.textContent = (rank===1?'🎉':rank===2?'❤️':'💪');
       champEmojiR.textContent = champEmojiL.textContent;
-    }
-
-    function renderBoard(rows){
-      if (!rows.length) return '<div class="dim">아직 기록이 없습니다.</div>';
-      const admin = !!adminCred;
-      const header = `<thead><tr><th>#</th><th>이름</th><th>기록</th>${admin?'<th>관리</th>':''}</tr></thead>`;
-      const trs = rows.map((r,i)=>{
-        const s=(Number(r.best_ms)/1000).toFixed(3);
-        const nm=escapeHtml(String(r.name||''));
-        const delBtn = admin ? `<button class="btn btn-del" data-name="${nm}" type="button">삭제</button>` : '';
-        return `<tr><td class="rank">${i+1}</td><td class="name">${nm}</td><td class="time">${s}s</td>${admin?`<td class="ctrl">${delBtn}</td>`:''}</tr>`;
-      }).join('');
-      const table = `<table class="table">${header}<tbody>${trs}</tbody></table>`;
-      setTimeout(()=>{
-        $$('.btn-del').forEach(b=>b.addEventListener('click', async (e)=>{
-          const name=e.currentTarget.getAttribute('data-name');
-          if (!confirm(\`'\${name}' 기록을 삭제할까요?\`)) return;
-          const ok = await adminDelete(name);
-          if (ok){ alert('삭제되었습니다.'); fetchTop10(); } else { alert('삭제 실패(권한 또는 서버 오류)'); }
-        }));
-      },0);
-      return table;
     }
 
     async function saveBestToServer(name, ms){
