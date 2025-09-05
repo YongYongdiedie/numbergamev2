@@ -160,7 +160,7 @@
 
   <script>
     // 1) 여기에 본인 Apps Script /exec URL을 넣으세요.
-    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbzZX4U6jAOZzr4gGPSFbZcSox9qDG-f-qIpl75vyqmkIFSHiRsexl7KdkObPDY_hFyG/exec";
     // 2) (선택) 주소창에 ?api=... 로도 주입 가능. 또는 한번 넣으면 로컬에 저장.
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
