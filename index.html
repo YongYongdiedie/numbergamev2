@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (최종 · 로테이션 · JS 없이도 닫히는 안내)</title>
+  <title>1→6 순서 터치 (랭킹 파서 강화판)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
@@ -21,7 +21,7 @@
     .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
     .pill{ background:#0000000a; border:1px solid #00000020; padding:6px 10px; border-radius:999px; }
     .pill strong{letter-spacing:.3px}
-    .btn{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:10px 14px; border-radius:12px; font-weight:700; cursor:pointer; }
+    .btn{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:10px 14px; border-radius:12px; font-weight:700; }
     .name{ display:flex; gap:6px; align-items:center; background:#00000008; border:1px solid #00000020; padding:6px 10px; border-radius:999px; }
     .name input{ background:transparent; border:none; outline:none; color:var(--ink); width:150px; font-weight:700; font-size:16px; }
     .status{ font-size:12px; color:var(--muted); }
@@ -36,8 +36,6 @@
     .grid.shake{ animation:shake .25s linear }
     @keyframes shake{ 15%, 45%, 75% { transform: translateX(-6px) } 30%, 60%, 90% { transform: translateX(6px) } }
     .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
-
-    /* Panel */
     .panel{ position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5; width: min(460px, 92vw); background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 10px; display: none; color: #000; }
     .panel.open{ display:block; }
     .panel header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -54,7 +52,7 @@
     .table td.ctrl{ width:1%; white-space:nowrap; text-align:right; }
     .dim{ color:#4b5563; font-size:12px; }
 
-    /* Intro overlay (CSS toggle) */
+    /* Intro toggle (CSS-only) */
     #introToggle{ position:fixed; opacity:0; pointer-events:none; }
     .intro{ position: fixed; inset:0; z-index: 10; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,.45); padding: 20px; }
     #introToggle:not(:checked) + .intro{ display:none; }
@@ -65,27 +63,24 @@
     .intro .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
     .intro .backdrop{ position: absolute; inset:0; display:block; }
 
-    /* Global best in the center */
     .globalBest{ position: fixed; left:50%; top:50%; transform: translate(-50%,-50%); z-index: 0; pointer-events: none; font-variant-numeric: tabular-nums; text-align: center; opacity: .1; }
     .globalBest .label{ font-size: clamp(12px, 3.2vw, 22px); letter-spacing:.2px; }
     .globalBest .time{ margin-top: 4px; font-weight: 900; font-size: clamp(36px, 18vw, 140px); line-height: 1; }
 
-    /* Save modal */
     .modal{ position: fixed; inset:0; z-index: 9; background: var(--overlay); display:none; align-items:center; justify-content:center; padding: 16px; }
     .modal.open{ display:flex; }
     .modal .card{ width: min(560px, 95vw); background: #ffffff; color:#000; border:1px solid var(--border); border-radius:16px; box-shadow: 0 10px 30px #00000033; padding: 16px; }
     .modal h3{ margin:0 0 8px 0; font-size:18px; }
-    .modal p{ margin:6px 0; }
-    .modal .row{ justify-content:space-between; }
     .modal .time{ font-weight:900; }
     .modal .name-line{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
     .modal input{ border:1px solid #00000030; background:#ffffff; color:#000; border-radius:10px; padding:8px 10px; font-size:16px; flex:1; min-width: 160px; }
 
-    /* Rotation pill */
     .champ{ display:none; align-items:center; gap:6px; background:#fff7ed; border:1px solid #f97316; color:#9a3412; padding:6px 10px; border-radius:999px; font-weight:800; }
     .champ .emoji{ font-size:16px; line-height:1; }
     .champ .label{ font-size:12px; opacity:.9; }
     .champ .name{ max-width:22ch; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .debug{ margin-top:6px; font-size:12px; color:#6b7280; word-break:break-all; }
+    .debug pre{ white-space:pre-wrap; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; padding:8px; max-height:160px; overflow:auto; }
   </style>
 </head>
 <body>
@@ -123,10 +118,8 @@
     <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
   </div>
 
-  <!-- Intro: CSS-only toggle -->
   <input id="introToggle" type="checkbox" checked aria-hidden="true" />
   <div class="intro" id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle">
-    <!-- Click/tap backdrop to close (CSS label) -->
     <label class="backdrop" for="introToggle" aria-label="닫기"></label>
     <div class="sheet">
       <h2 id="introTitle">게임 안내</h2>
@@ -135,7 +128,6 @@
       <p>3. 랭킹에 올리고 싶은 경우 이름을 입력하고 '저장'을 누르세요.</p>
       <p>4. '랭킹' 버튼을 누르면 Top10 기록이 표시됩니다.</p>
       <div class="actions">
-        <!-- Button that works without JS -->
         <label class="btn" for="introToggle">확인</label>
       </div>
     </div>
@@ -163,6 +155,10 @@
       <div class="dim">랭킹을 불러오는 중…</div>
     </div>
     <div class="dim" id="boardInfo" style="margin-top:6px;"></div>
+    <div class="debug" id="debugArea" style="display:none;">
+      <div>서버 원본 응답:</div>
+      <pre id="debugRaw"></pre>
+    </div>
   </div>
 
   <div class="modal" id="saveModal" aria-hidden="true" aria-labelledby="saveTitle" role="dialog">
@@ -186,10 +182,11 @@
       if (el){ el.className='pill status err'; el.textContent='스크립트 오류: ' + (e.message||''); }
     });
 
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbzN_mmkVDLnH7bBm9zppD9sFWgsrOaCX7rGlDY8fZFHM1kanacPFotifeC487T8ZP3n/exec";
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
     const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
+    const TOP_DAYS = 7;
 
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
@@ -201,10 +198,10 @@
     const adminToggle = $('#adminToggle'), adminArea = $('#adminArea'), admId = $('#admId'), admPw = $('#admPw'), admLogin = $('#admLogin'), admLogout = $('#admLogout'), admStatus = $('#admStatus');
     const saveModal = $('#saveModal'), modalTime = $('#modalTime'), modalName = $('#modalName'), saveYes = $('#saveYes'), saveNo = $('#saveNo');
     const champPill = $('#champPill'), champName = $('#champName'), champEmojiL = $('#champEmojiL'), champEmojiR = $('#champEmojiR'), champLabel = $('#champLabel');
+    const debugArea = $('#debugArea'), debugRaw = $('#debugRaw');
 
     let next=1,running=false,startTime=0,raf=null,adminCred=null;
     let lastElapsedMs = null;
-    let cycleTimer = null, cycleIdx = 0, cycleData = [];
     const LS_NAME='sixSplitPlayerName';
 
     function resizeLayout(){ grid.style.top=hud.offsetHeight+'px'; grid.style.bottom='0px'; }
@@ -213,11 +210,9 @@
 
     function init(){
       const stored=localStorage.getItem(LS_NAME)||''; if(stored) nameInput.value=stored;
-
       bindHud(); bindAdmin(); bindModal();
       renderShuffled(); reset(false); updateServerStatus();
       fetchTop10();
-
       requestAnimationFrame(resizeLayout); setTimeout(resizeLayout,250);
     }
 
@@ -231,13 +226,13 @@
 
     function bindAdmin(){
       adminToggle.addEventListener('click', ()=>{ adminArea.style.display = adminArea.style.display==='none'?'flex':'none'; });
-      admLogin.addEventListener('click', async ()=>{
+      $('#admLogin').addEventListener('click', async ()=>{
         const id=admId.value.trim(), pw=admPw.value.trim();
         const ok = await adminAuth(id,pw);
         if (ok){ adminCred={id,pw}; admStatus.textContent='로그인 성공'; admLogout.style.display=''; admLogin.style.display='none'; fetchTop10(); }
         else { admStatus.textContent='로그인 실패'; adminCred=null; }
       });
-      admLogout.addEventListener('click', ()=>{ adminCred=null; admStatus.textContent='로그아웃됨'; admLogout.style.display='none'; admLogin.style.display=''; fetchTop10(); });
+      $('#admLogout').addEventListener('click', ()=>{ adminCred=null; admStatus.textContent='로그아웃됨'; admLogout.style.display='none'; admLogin.style.display=''; fetchTop10(); });
     }
 
     function bindModal(){
@@ -268,7 +263,6 @@
     }
 
     function onTap(e){
-      // If intro still checked (visible), ignore taps
       const introToggle = document.getElementById('introToggle');
       if (introToggle && introToggle.checked) return;
       if (saveModal.classList.contains('open')) return;
@@ -319,15 +313,45 @@
     async function adminAuth(id,pw){
       try{
         const res = await fetch(getApi(), { method:'POST', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body: JSON.stringify({action:'auth', admin_id:id, admin_pw:pw}) });
-        const data = await res.json(); return !!(data && data.ok);
+        const data = await safeParseResponse(res); return !!(data && data.ok);
       }catch(e){ console.warn('admin auth failed',e); return false; }
     }
     async function adminDelete(name){
       if(!adminCred) return false;
       try{
         const res = await fetch(getApi(), { method:'POST', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body: JSON.stringify({action:'delete', name, admin_id:adminCred.id, admin_pw:adminCred.pw}) });
-        const data = await res.json(); return !!(data && data.ok);
+        const data = await safeParseResponse(res); return !!(data && data.ok);
       }catch(e){ console.warn('admin delete failed',e); return false; }
+    }
+
+    function normalizeRows(rows){
+      // Accept: [{name, best_ms}] or [{player, ms/time/duration_ms}] or array of arrays [name, ms]
+      const out = [];
+      rows.forEach(r=>{
+        if (Array.isArray(r) && r.length>=2){
+          out.push({ name: String(r[0]||''), best_ms: Number(r[1]) });
+        } else if (r && typeof r==='object'){
+          const name = String(r.name ?? r.player ?? r.nickname ?? r.user ?? '');
+          const ms = Number(r.best_ms ?? r.ms ?? r.time ?? r.duration_ms ?? r.best);
+          if (name) out.push({ name, best_ms: ms });
+        }
+      });
+      // filter valid & sort ascending by ms
+      return out.filter(x => isFinite(x.best_ms)).sort((a,b)=>a.best_ms-b.best_ms);
+    }
+
+    async function safeParseResponse(res){
+      const text = await res.text();
+      try{
+        // strip XSSI `)]}',\n`
+        const cleaned = text.replace(/^\)\]\}',?\n/, '');
+        return JSON.parse(cleaned);
+      }catch(e){
+        // try GAS HtmlService JSON-in-HTML (extract {...})
+        const m = text.match(/\{[\s\S]*\}$/);
+        if (m){ try{ return JSON.parse(m[0]); }catch(_){ /* ignore */ } }
+        throw new Error('응답 파싱 실패: ' + text.slice(0,400));
+      }
     }
 
     async function fetchTop10(){
@@ -336,35 +360,43 @@
         serverStatus.className='pill status err'; serverStatus.textContent='서버: 미설정';
         return;
       }
-      // try 7 days first
-      let data = null, ok=false;
+      let data = null, ok=false, rawText='';
       try{
-        const url7 = `${getApi()}?action=top&limit=10&days=${encodeURIComponent(7)}`;
+        const url7 = `${getApi()}?action=top&limit=10&days=${encodeURIComponent(TOP_DAYS)}`;
         const res7 = await fetch(url7, { method:'GET' });
-        const d7 = await res7.json();
-        if (d7 && d7.ok && Array.isArray(d7.top)){ data=d7; ok=true; }
+        rawText = await res7.clone().text();
+        data = await safeParseResponse(res7);
+        ok = !!(data && (Array.isArray(data.top)||Array.isArray(data.rows)||Array.isArray(data.records)));
       }catch(_){}
       if (!ok){
         try{
           const url = `${getApi()}?action=top&limit=10`;
           const res = await fetch(url, { method:'GET' });
-          const d = await res.json();
-          if (d && d.ok && Array.isArray(d.top)){ data=d; ok=true; }
+          rawText = await res.clone().text();
+          data = await safeParseResponse(res);
+          ok = !!(data && (Array.isArray(data.top)||Array.isArray(data.rows)||Array.isArray(data.records)));
         }catch(_){}
       }
       if (ok && data){
         serverStatus.className='pill status ok'; serverStatus.textContent='서버: 연결됨';
-        boardWrap.innerHTML = renderBoard(data.top);
+        const rows = normalizeRows(data.top || data.rows || data.records || []);
+        if (rows.length){
+          boardWrap.innerHTML = renderBoard(rows);
+          setGlobalBest(rows[0].best_ms);
+          setRotation(rows);
+          debugArea.style.display='none';
+        }else{
+          boardWrap.innerHTML = '<div class="dim">기록이 없습니다.</div>';
+          setGlobalBest(null); setRotation([]);
+          // show raw if server gave unexpected shape
+          debugArea.style.display='block'; debugRaw.textContent = rawText.slice(0,2000);
+        }
         const now = new Date(); boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
-        if (data.top.length>0){
-          const ms=Number(data.top[0].best_ms);
-          setGlobalBest(isFinite(ms)?ms:null);
-          setRotation(data.top);
-        } else { setGlobalBest(null); setRotation([]); }
       } else {
         boardWrap.innerHTML = '<div class="dim">랭킹을 불러오지 못했습니다.</div>';
         setGlobalBest(null); setRotation([]);
         serverStatus.className='pill status err'; serverStatus.textContent='서버: 오류(조회 실패)';
+        debugArea.style.display='block'; debugRaw.textContent = rawText.slice(0,2000);
       }
     }
 
@@ -373,14 +405,12 @@
       globalBestTime.textContent=text; bestEl.textContent=text;
     }
 
-    // rotation
     function setRotation(rows){
       const top3 = rows.slice(0,3).map(r => (String(r.name||'').trim()) ).filter(n => n.length>0);
-      window._cycleData = top3;
       if (window._cycleTimer){ clearInterval(window._cycleTimer); window._cycleTimer=null; }
       if (top3.length === 0){ champPill.style.display='none'; champName.textContent='—'; return; }
       champPill.style.display='flex';
-      window._cycleIdx = 0;
+      window._cycleData = top3; window._cycleIdx = 0;
       renderChampionFrame(window._cycleIdx);
       window._cycleTimer = setInterval(()=>{
         window._cycleIdx = (window._cycleIdx + 1) % top3.length;
@@ -395,9 +425,31 @@
       champEmojiR.textContent = champEmojiL.textContent;
     }
 
+    function renderBoard(rows){
+      if (!rows.length) return '<div class="dim">아직 기록이 없습니다.</div>';
+      const admin = !!adminCred;
+      const header = `<thead><tr><th>#</th><th>이름</th><th>기록</th>${admin?'<th>관리</th>':''}</tr></thead>`;
+      const trs = rows.map((r,i)=>{
+        const s=(Number(r.best_ms)/1000).toFixed(3);
+        const nm=escapeHtml(String(r.name||''));
+        const delBtn = admin ? `<button class="btn btn-del" data-name="${nm}" type="button">삭제</button>` : '';
+        return `<tr><td class="rank">${i+1}</td><td class="name">${nm}</td><td class="time">${s}s</td>${admin?`<td class="ctrl">${delBtn}</td>`:''}</tr>`;
+      }).join('');
+      const table = `<table class="table">${header}<tbody>${trs}</tbody></table>`;
+      setTimeout(()=>{
+        $$('.btn-del').forEach(b=>b.addEventListener('click', async (e)=>{
+          const name=e.currentTarget.getAttribute('data-name');
+          if (!confirm(\`'\${name}' 기록을 삭제할까요?\`)) return;
+          const ok = await adminDelete(name);
+          if (ok){ alert('삭제되었습니다.'); fetchTop10(); } else { alert('삭제 실패(권한 또는 서버 오류)'); }
+        }));
+      },0);
+      return table;
+    }
+
     async function saveBestToServer(name, ms){
       const res = await fetch(getApi(), { method:'POST', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body: JSON.stringify({ name, ms }) });
-      const data = await res.json();
+      const data = await safeParseResponse(res);
       if (!(data && data.ok)) throw new Error('save failed');
       fetchTop10();
       return data;
