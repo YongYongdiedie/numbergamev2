@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (랜덤 6분할) + 서버 저장</title>
+  <title>1→6 순서 터치 (랜덤 6분할) + 서버 저장 + 랭킹</title>
   <style>
     :root{
       --bg:#0b1020; --cell:#121a2d; --cell2:#0e1526;
       --ok:#22c55e; --err:#ef4444; --ink:#e5e7eb; --muted:#9ca3af;
+      --panel:#0b1120e6; --border:#ffffff26;
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
@@ -50,6 +51,34 @@
     .grid.shake{ animation:shake .25s linear }
     @keyframes shake{ 15%, 45%, 75% { transform: translateX(-6px) } 30%, 60%, 90% { transform: translateX(6px) } }
     .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
+
+    /* Leaderboard panel */
+    .panel{
+      position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5;
+      width: min(420px, 92vw);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px #000000aa, inset 0 0 0 1px #ffffff14;
+      padding: 10px;
+      display: none;
+    }
+    .panel.open{ display:block; }
+    .panel header{
+      display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;
+    }
+    .panel h3{ margin:0; font-size:16px; letter-spacing:.2px }
+    .panel .close{ border:1px solid #ffffff2a; background:#ffffff12; color:var(--ink); padding:6px 10px; border-radius:10px; font-weight:700; }
+    .table{
+      width:100%; border-collapse: collapse; font-variant-numeric: tabular-nums;
+    }
+    .table th, .table td{
+      border-bottom:1px solid #ffffff1a; padding:6px 4px; text-align:left;
+    }
+    .table th{ color:#cbd5e1; font-size:12px; }
+    .table td.rank{ width:2.5ch; text-align:right; }
+    .table td.time{ text-align:right; font-weight:800; }
+    .dim{ color:#94a3b8; font-size:12px; }
   </style>
 </head>
 <body>
@@ -61,6 +90,7 @@
         <button class="btn" id="saveNameBtn" type="button">저장</button>
       </div>
       <button class="btn" id="restartBtn" type="button" aria-label="다시하기">↻ 다시</button>
+      <button class="btn" id="leaderBtn" type="button" aria-label="랭킹">🏆 랭킹</button>
     </div>
     <div class="row">
       <div class="pill">시간 <strong id="time">0.000s</strong></div>
@@ -75,9 +105,24 @@
     <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
   </div>
 
+  <!-- Leaderboard panel -->
+  <div class="panel" id="panel">
+    <header>
+      <h3>Top 10 랭킹</h3>
+      <div>
+        <button class="btn" id="refreshBtn" type="button">새로고침</button>
+        <button class="close" id="closePanel" type="button">닫기</button>
+      </div>
+    </header>
+    <div id="boardWrap">
+      <div class="dim">랭킹을 불러오는 중…</div>
+    </div>
+    <div class="dim" id="boardInfo" style="margin-top:6px;"></div>
+  </div>
+
   <script>
-    // Apps Script Web App URL (/exec로 끝나는 전체 URL)
-    const API_BASE = "https://script.google.com/macros/s/AKfycbxbTYHvNyQMuZDfp9varU_FMgatF4ssxLFRfEhMdT-ASKhZ0jj4d3eS6MIm5qnC3hkA/exec";
+    // Apps Script Web App URL (/exec)
+    const API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
 
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
@@ -90,6 +135,13 @@
     const nameInput = $('#playerName');
     const saveNameBtn = $('#saveNameBtn');
     const serverStatus = $('#serverStatus');
+
+    const panel = $('#panel');
+    const leaderBtn = $('#leaderBtn');
+    const refreshBtn = $('#refreshBtn');
+    const closePanel = $('#closePanel');
+    const boardWrap = $('#boardWrap');
+    const boardInfo = $('#boardInfo');
 
     let next = 1;
     let running = false;
@@ -133,6 +185,13 @@
         localStorage.setItem(LS_NAME, name);
         if (getApi() && name) fetchBestFromServer(name);
       });
+      leaderBtn.addEventListener('click', async () => {
+        panel.classList.add('open');
+        boardWrap.innerHTML = '<div class="dim">랭킹을 불러오는 중…</div>';
+        await fetchTop10();
+      });
+      refreshBtn.addEventListener('click', fetchTop10);
+      closePanel.addEventListener('click', () => panel.classList.remove('open'));
     }
 
     function renderShuffled(){
@@ -198,7 +257,7 @@
 
       const name = nameInput.value.trim();
       if (getApi() && name) {
-        saveBestToServer(name, Math.round(elapsed));
+        saveBestToServer(name, Math.round(elapsed)).then(fetchTop10).catch(()=>{});
       } else {
         serverStatus.className = 'pill status err';
         serverStatus.textContent = '서버: 미설정(저장 안 됨)';
@@ -248,7 +307,6 @@
 
     async function saveBestToServer(name, ms){
       try {
-        // Use text/plain to keep the request "simple" (no preflight)
         const res = await fetch(getApi(), {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
@@ -268,6 +326,47 @@
         serverStatus.className = 'pill status err';
         serverStatus.textContent = '서버: 오류(저장 실패)';
       }
+    }
+
+    async function fetchTop10(){
+      if (!getApi()) return;
+      try {
+        const url = `${getApi()}?action=top&limit=10`;
+        const res = await fetch(url, { method: 'GET' });
+        const data = await res.json();
+        if (data && data.ok && Array.isArray(data.top)) {
+          const rows = data.top;
+          boardWrap.innerHTML = renderBoard(rows);
+          const now = new Date();
+          boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
+        } else {
+          throw new Error('bad leaderboard response');
+        }
+      } catch (e) {
+        console.warn('fetch top failed', e);
+        boardWrap.innerHTML = '<div class="dim">랭킹을 불러오지 못했습니다.</div>';
+      }
+    }
+
+    function renderBoard(rows){
+      if (!rows.length) return '<div class="dim">아직 기록이 없습니다.</div>';
+      const trs = rows.map((r, i) => {
+        const s = (Number(r.best_ms)/1000).toFixed(3);
+        const nm = escapeHtml(String(r.name || ''));
+        return `<tr>
+          <td class="rank">${i+1}</td>
+          <td class="name">${nm}</td>
+          <td class="time">${s}s</td>
+        </tr>`;
+      }).join('');
+      return `<table class="table">
+        <thead><tr><th>#</th><th>이름</th><th>기록</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>`;
+    }
+
+    function escapeHtml(str){
+      return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     }
 
     function updateServerStatus(){
