@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (랭킹 파서 강화판)</title>
+  <title>1→6 순서 터치 (게임화면 보장판)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
@@ -53,15 +53,16 @@
     .dim{ color:#4b5563; font-size:12px; }
 
     /* Intro toggle (CSS-only) */
-    #introToggle{ position:fixed; opacity:0; pointer-events:none; }
+    #introToggle{ position:absolute; opacity:0; width:0; height:0; }
     .intro{ position: fixed; inset:0; z-index: 10; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,.45); padding: 20px; }
+    /* default: show intro when checked */
     #introToggle:not(:checked) + .intro{ display:none; }
-    .intro .sheet{ width: min(720px, 96vw); background: #ffffff; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 16px; color: #000; }
+    .intro .sheet{ width: min(720px, 96vw); background: #ffffff; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 16px; color: #000; position:relative; z-index:2; }
     .intro h2{ margin: 0 0 8px 0; font-size: 18px; }
     .intro p{ margin: 6px 0; line-height: 1.5; }
     .intro .note{ color:#16a34a; font-weight:600; }
     .intro .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
-    .intro .backdrop{ position: absolute; inset:0; display:block; }
+    .intro .backdrop{ position: absolute; inset:0; display:block; z-index:1; }
 
     .globalBest{ position: fixed; left:50%; top:50%; transform: translate(-50%,-50%); z-index: 0; pointer-events: none; font-variant-numeric: tabular-nums; text-align: center; opacity: .1; }
     .globalBest .label{ font-size: clamp(12px, 3.2vw, 22px); letter-spacing:.2px; }
@@ -118,6 +119,7 @@
     <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
   </div>
 
+  <!-- Intro: CSS toggle + JS fallback -->
   <input id="introToggle" type="checkbox" checked aria-hidden="true" />
   <div class="intro" id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle">
     <label class="backdrop" for="introToggle" aria-label="닫기"></label>
@@ -128,7 +130,7 @@
       <p>3. 랭킹에 올리고 싶은 경우 이름을 입력하고 '저장'을 누르세요.</p>
       <p>4. '랭킹' 버튼을 누르면 Top10 기록이 표시됩니다.</p>
       <div class="actions">
-        <label class="btn" for="introToggle">확인</label>
+        <button class="btn" id="introOk" type="button">확인</button>
       </div>
     </div>
   </div>
@@ -182,7 +184,7 @@
       if (el){ el.className='pill status err'; el.textContent='스크립트 오류: ' + (e.message||''); }
     });
 
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbzN_mmkVDLnH7bBm9zppD9sFWgsrOaCX7rGlDY8fZFHM1kanacPFotifeC487T8ZP3n/exec";
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
     const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
@@ -210,10 +212,33 @@
 
     function init(){
       const stored=localStorage.getItem(LS_NAME)||''; if(stored) nameInput.value=stored;
-      bindHud(); bindAdmin(); bindModal();
+      bindHud(); bindAdmin(); bindModal(); bindIntro();
       renderShuffled(); reset(false); updateServerStatus();
       fetchTop10();
       requestAnimationFrame(resizeLayout); setTimeout(resizeLayout,250);
+    }
+
+    function bindIntro(){
+      const introToggle = $('#introToggle');
+      const intro = $('#intro');
+      const closeIntro = ()=>{
+        if (introToggle) introToggle.checked = false;
+        if (intro) intro.style.display = 'none'; // JS 강제 닫기
+        renderShuffled(); // 혹시 몰라 한 번 더 보장
+        resizeLayout();
+      };
+      // 버튼으로 닫기
+      $('#introOk').addEventListener('click', closeIntro);
+      // 배경 탭으로 닫기 (라벨로 토글 + JS 백업)
+      $('.backdrop').addEventListener('click', closeIntro);
+      // 페이지 임의 터치가 발생하면 3초 후에도 안 닫혀 있으면 닫기
+      let armed=false;
+      const arm = ()=>{
+        if (armed) return; armed=true;
+        setTimeout(()=>{ if (intro && intro.style.display !== 'none') closeIntro(); }, 3000);
+      };
+      window.addEventListener('pointerdown', arm, {passive:true});
+      window.addEventListener('touchstart', arm, {passive:true});
     }
 
     function bindHud(){
@@ -325,7 +350,6 @@
     }
 
     function normalizeRows(rows){
-      // Accept: [{name, best_ms}] or [{player, ms/time/duration_ms}] or array of arrays [name, ms]
       const out = [];
       rows.forEach(r=>{
         if (Array.isArray(r) && r.length>=2){
@@ -336,20 +360,17 @@
           if (name) out.push({ name, best_ms: ms });
         }
       });
-      // filter valid & sort ascending by ms
       return out.filter(x => isFinite(x.best_ms)).sort((a,b)=>a.best_ms-b.best_ms);
     }
 
     async function safeParseResponse(res){
       const text = await res.text();
       try{
-        // strip XSSI `)]}',\n`
         const cleaned = text.replace(/^\)\]\}',?\n/, '');
         return JSON.parse(cleaned);
       }catch(e){
-        // try GAS HtmlService JSON-in-HTML (extract {...})
         const m = text.match(/\{[\s\S]*\}$/);
-        if (m){ try{ return JSON.parse(m[0]); }catch(_){ /* ignore */ } }
+        if (m){ try{ return JSON.parse(m[0]); }catch(_){ } }
         throw new Error('응답 파싱 실패: ' + text.slice(0,400));
       }
     }
@@ -388,7 +409,6 @@
         }else{
           boardWrap.innerHTML = '<div class="dim">기록이 없습니다.</div>';
           setGlobalBest(null); setRotation([]);
-          // show raw if server gave unexpected shape
           debugArea.style.display='block'; debugRaw.textContent = rawText.slice(0,2000);
         }
         const now = new Date(); boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
@@ -457,6 +477,7 @@
 
     function closeSaveModal(){ saveModal.classList.remove('open'); saveModal.setAttribute('aria-hidden','true'); }
     function openSaveModal(secText){
+      // secText 이미 "1.234" 형태이므로 s를 한 번만 붙임
       modalTime.textContent = secText + 's';
       modalName.value = (nameInput.value || localStorage.getItem(LS_NAME) || '').trim();
       saveModal.classList.add('open'); saveModal.setAttribute('aria-hidden','false');
