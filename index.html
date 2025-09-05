@@ -3,13 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (최종 통합판)</title>
+  <title>1→6 순서 터치 (최종 통합판 · 안정화)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
       --ok:#16a34a; --err:#ef4444; --ink:#000000; --muted:#555555;
-      --panel:#ffffffee; --border:#00000033;
-      --overlay:#00000066;
+      --panel:#ffffffee; --border:#00000033; --overlay:#00000066;
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
@@ -102,15 +101,15 @@
     <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
   </div>
 
-  <div class="intro" id="intro">
+  <div class="intro" id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle">
     <div class="sheet">
-      <h2>게임 안내</h2>
+      <h2 id="introTitle">게임 안내</h2>
       <p>1. 초록색 <span class="note">'서버:연결됨'</span>을 확인 후 시작하세요.</p>
       <p>2. 숫자 1을 누르는 순간 타이머가 시작됩니다.(누르기 전에는 시간 흐르지 않음.)</p>
       <p>3. 랭킹에 올리고 싶은 경우 이름을 입력하고 '저장'을 누르세요.</p>
       <p>4. '랭킹' 버튼을 누르면 Top10 기록이 표시됩니다.</p>
       <div class="actions">
-        <button class="btn" id="introOk" type="button">확인</button>
+        <button class="btn" id="introOk" type="button" autofocus>확인</button>
       </div>
     </div>
   </div>
@@ -154,7 +153,13 @@
   </div>
 
   <script>
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbzN_mmkVDLnH7bBm9zppD9sFWgsrOaCX7rGlDY8fZFHM1kanacPFotifeC487T8ZP3n/exec";
+    // Global error surfacing
+    window.addEventListener('error', function(e){
+      const el = document.querySelector('#serverStatus');
+      if (el){ el.className='pill status err'; el.textContent='스크립트 오류: ' + (e.message||''); }
+    });
+
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
     const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
@@ -162,39 +167,13 @@
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
 
-    const hud = $('#hud');
-    const grid = $('#grid');
-    const timeEl = $('#time');
-    const bestEl = $('#best');
-    const globalBestTime = $('#globalBestTime');
-    const msgEl = $('#msg');
-    const nameInput = $('#playerName');
-    const saveNameBtn = $('#saveNameBtn');
-    const serverStatus = $('#serverStatus');
-
-    const panel = $('#panel');
-    const leaderBtn = $('#leaderBtn');
-    const refreshBtn = $('#refreshBtn');
-    const closePanel = $('#closePanel');
-    const boardWrap = $('#boardWrap');
-    const boardInfo = $('#boardInfo');
-
-    const adminToggle = $('#adminToggle');
-    const adminArea = $('#adminArea');
-    const admId = $('#admId');
-    const admPw = $('#admPw');
-    const admLogin = $('#admLogin');
-    const admLogout = $('#admLogout');
-    const admStatus = $('#admStatus');
-
-    const intro = $('#intro');
-    const introOk = $('#introOk');
-
-    const saveModal = $('#saveModal');
-    const modalTime = $('#modalTime');
-    const modalName = $('#modalName');
-    const saveYes = $('#saveYes');
-    const saveNo = $('#saveNo');
+    const hud = $('#hud'), grid = $('#grid');
+    const timeEl = $('#time'), bestEl = $('#best'), globalBestTime = $('#globalBestTime');
+    const msgEl = $('#msg'), nameInput = $('#playerName'), saveNameBtn = $('#saveNameBtn'), serverStatus = $('#serverStatus');
+    const panel = $('#panel'), leaderBtn = $('#leaderBtn'), refreshBtn = $('#refreshBtn'), closePanel = $('#closePanel'), boardWrap = $('#boardWrap'), boardInfo = $('#boardInfo');
+    const adminToggle = $('#adminToggle'), adminArea = $('#adminArea'), admId = $('#admId'), admPw = $('#admPw'), admLogin = $('#admLogin'), admLogout = $('#admLogout'), admStatus = $('#admStatus');
+    const intro = $('#intro'), introOk = $('#introOk');
+    const saveModal = $('#saveModal'), modalTime = $('#modalTime'), modalName = $('#modalName'), saveYes = $('#saveYes'), saveNo = $('#saveNo');
 
     let next=1,running=false,startTime=0,raf=null,adminCred=null;
     let lastElapsedMs = null;
@@ -214,20 +193,15 @@
       requestAnimationFrame(resizeLayout); setTimeout(resizeLayout,250);
     }
 
-    function bindIntro(){ introOk.addEventListener('click',()=>{ intro.style.display='none'; vibrate(10); }); }
+    function bindIntro(){
+      const hideIntro = ()=>{ intro.style.display='none'; vibrate(10); };
+      ['click','pointerdown','touchend'].forEach(evt => introOk.addEventListener(evt, hideIntro, {passive:true}));
+    }
 
     function bindHud(){
       $('#restartBtn').addEventListener('click',()=>{ vibrate(10); renderShuffled(); reset(true); });
-      saveNameBtn.addEventListener('click',()=>{
-        const name=nameInput.value.trim();
-        localStorage.setItem(LS_NAME,name);
-        toast('이름 저장 완료');
-      });
-      leaderBtn.addEventListener('click', async ()=>{
-        panel.classList.add('open');
-        boardWrap.innerHTML='<div class="dim">랭킹을 불러오는 중…</div>';
-        await fetchTop10();
-      });
+      saveNameBtn.addEventListener('click',()=>{ const name=nameInput.value.trim(); localStorage.setItem(LS_NAME,name); toast('이름 저장 완료'); });
+      leaderBtn.addEventListener('click', async ()=>{ panel.classList.add('open'); boardWrap.innerHTML='<div class="dim">랭킹을 불러오는 중…</div>'; await fetchTop10(); });
       refreshBtn.addEventListener('click', fetchTop10);
       closePanel.addEventListener('click', ()=> panel.classList.remove('open'));
     }
@@ -250,22 +224,12 @@
         localStorage.setItem(LS_NAME, name);
         nameInput.value = name;
         if (getApi()){
-          try{
-            await saveBestToServer(name, lastElapsedMs);
-            toast('기록 저장됨');
-          }catch(e){
-            toast('저장 실패');
-          }
-        }else{
-          toast('서버 미설정');
-        }
-        closeSaveModal();
-        afterRoundReset();
+          try{ await saveBestToServer(name, lastElapsedMs); toast('기록 저장됨'); }
+          catch(e){ toast('저장 실패'); }
+        } else { toast('서버 미설정'); }
+        closeSaveModal(); afterRoundReset();
       });
-      saveNo.addEventListener('click', ()=>{
-        closeSaveModal();
-        afterRoundReset();
-      });
+      saveNo.addEventListener('click', ()=>{ closeSaveModal(); afterRoundReset(); });
     }
 
     function renderShuffled(){
@@ -306,7 +270,6 @@
       msgEl.innerHTML=`<span class="good">완료!</span> 기록: <b>${sec}s</b>`;
       vibrate([20,30,60]);
       next=999;
-
       openSaveModal(sec);
       fetchTop10();
     }
@@ -325,11 +288,7 @@
       msgEl.innerHTML='<b>1</b>을 터치하면 시작';
     }
 
-    function afterRoundReset(){
-      renderShuffled();
-      reset(false);
-    }
-
+    function afterRoundReset(){ renderShuffled(); reset(false); }
     function getApi(){ const url=(API_BASE||'').trim(); return url && url.startsWith('http') ? url : ''; }
 
     async function adminAuth(id,pw){
@@ -392,7 +351,7 @@
       setTimeout(()=>{
         $$('.btn-del').forEach(b=>b.addEventListener('click', async (e)=>{
           const name=e.currentTarget.getAttribute('data-name');
-          if (!confirm(\`'\${name}' 기록을 삭제할까요?\`)) return;
+          if (!confirm(`'${name}' 기록을 삭제할까요?`)) return;
           const ok = await adminDelete(name);
           if (ok){ alert('삭제되었습니다.'); fetchTop10(); } else { alert('삭제 실패(권한 또는 서버 오류)'); }
         }));
@@ -412,7 +371,7 @@
     }
 
     function openSaveModal(secText){
-      modalTime.textContent = secText + 's'.replace('ss','s');
+      modalTime.textContent = secText + 's';
       modalName.value = (nameInput.value || localStorage.getItem(LS_NAME) || '').trim();
       saveModal.classList.add('open');
       saveModal.setAttribute('aria-hidden','false');
