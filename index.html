@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (최종 통합판 · 안정화)</title>
+  <title>1→6 순서 터치 (최종 · 1~3위 로테이션)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
@@ -36,6 +36,8 @@
     .grid.shake{ animation:shake .25s linear }
     @keyframes shake{ 15%, 45%, 75% { transform: translateX(-6px) } 30%, 60%, 90% { transform: translateX(6px) } }
     .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
+
+    /* Panel */
     .panel{ position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5; width: min(460px, 92vw); background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 10px; display: none; color: #000; }
     .panel.open{ display:block; }
     .panel header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -51,15 +53,21 @@
     .table td.time{ text-align:right; font-weight:800; white-space:nowrap; }
     .table td.ctrl{ width:1%; white-space:nowrap; text-align:right; }
     .dim{ color:#4b5563; font-size:12px; }
+
+    /* Intro overlay */
     .intro{ position: fixed; inset:0; z-index: 10; display:flex; align-items:center; justify-content:center; background: rgba(0,0,0,.45); padding: 20px; }
     .intro .sheet{ width: min(720px, 96vw); background: #ffffff; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px #00000033; padding: 16px; color: #000; }
     .intro h2{ margin: 0 0 8px 0; font-size: 18px; }
     .intro p{ margin: 6px 0; line-height: 1.5; }
     .intro .note{ color:#16a34a; font-weight:600; }
     .intro .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+
+    /* Global best in the center */
     .globalBest{ position: fixed; left:50%; top:50%; transform: translate(-50%,-50%); z-index: 0; pointer-events: none; font-variant-numeric: tabular-nums; text-align: center; opacity: .1; }
     .globalBest .label{ font-size: clamp(12px, 3.2vw, 22px); letter-spacing:.2px; }
     .globalBest .time{ margin-top: 4px; font-weight: 900; font-size: clamp(36px, 18vw, 140px); line-height: 1; }
+
+    /* Save modal */
     .modal{ position: fixed; inset:0; z-index: 9; background: var(--overlay); display:none; align-items:center; justify-content:center; padding: 16px; }
     .modal.open{ display:flex; }
     .modal .card{ width: min(560px, 95vw); background: #ffffff; color:#000; border:1px solid var(--border); border-radius:16px; box-shadow: 0 10px 30px #00000033; padding: 16px; }
@@ -70,6 +78,12 @@
     .modal .name-line{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
     .modal input{ border:1px solid #00000030; background:#ffffff; color:#000; border-radius:10px; padding:8px 10px; font-size:16px; flex:1; min-width: 160px; }
     .modal .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+
+    /* Champion/rotation pill */
+    .champ{ display:none; align-items:center; gap:6px; background:#fff7ed; border:1px solid #f97316; color:#9a3412; padding:6px 10px; border-radius:999px; font-weight:800; }
+    .champ .emoji{ font-size:16px; line-height:1; }
+    .champ .label{ font-size:12px; opacity:.9; }
+    .champ .name{ max-width:22ch; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   </style>
 </head>
 <body>
@@ -82,6 +96,13 @@
       </div>
       <button class="btn" id="restartBtn" type="button" aria-label="다시하기">↻ 다시</button>
       <button class="btn" id="leaderBtn" type="button" aria-label="랭킹">🏆 랭킹</button>
+      <!-- Rotation pill -->
+      <div class="champ" id="champPill" title="최근 1주 상위 랭커">
+        <span class="emoji" id="champEmojiL">🎉</span>
+        <span class="label" id="champLabel">1위</span>
+        <span class="name" id="champName">—</span>
+        <span class="emoji" id="champEmojiR">🎉</span>
+      </div>
     </div>
     <div class="row">
       <div class="pill">시간 <strong id="time">0.000s</strong></div>
@@ -159,10 +180,11 @@
       if (el){ el.className='pill status err'; el.textContent='스크립트 오류: ' + (e.message||''); }
     });
 
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbzN_mmkVDLnH7bBm9zppD9sFWgsrOaCX7rGlDY8fZFHM1kanacPFotifeC487T8ZP3n/exec";
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
     const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
+    const TOP_DAYS = 7; // 최근 1주
 
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
@@ -174,9 +196,11 @@
     const adminToggle = $('#adminToggle'), adminArea = $('#adminArea'), admId = $('#admId'), admPw = $('#admPw'), admLogin = $('#admLogin'), admLogout = $('#admLogout'), admStatus = $('#admStatus');
     const intro = $('#intro'), introOk = $('#introOk');
     const saveModal = $('#saveModal'), modalTime = $('#modalTime'), modalName = $('#modalName'), saveYes = $('#saveYes'), saveNo = $('#saveNo');
+    const champPill = $('#champPill'), champName = $('#champName'), champEmojiL = $('#champEmojiL'), champEmojiR = $('#champEmojiR'), champLabel = $('#champLabel');
 
     let next=1,running=false,startTime=0,raf=null,adminCred=null;
     let lastElapsedMs = null;
+    let cycleTimer = null, cycleIdx = 0, cycleData = []; // rotation state
     const LS_NAME='sixSplitPlayerName';
 
     function resizeLayout(){ grid.style.top=hud.offsetHeight+'px'; grid.style.bottom='0px'; }
@@ -308,26 +332,43 @@
     async function fetchTop10(){
       if (!getApi()){
         setGlobalBest(null);
+        setRotation([]);
         serverStatus.className='pill status err'; serverStatus.textContent='서버: 미설정';
         return;
       }
+      // First try last 7 days; if server doesn't support, fall back to all-time
+      let data = null, ok=false;
       try{
-        const url = `${getApi()}?action=top&limit=10`;
-        const res = await fetch(url, { method:'GET' });
-        const data = await res.json();
-        if (data && data.ok && Array.isArray(data.top)){
-          serverStatus.className='pill status ok'; serverStatus.textContent='서버: 연결됨';
-          boardWrap.innerHTML = renderBoard(data.top);
-          const now = new Date(); boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
-          if (data.top.length>0){ const ms=Number(data.top[0].best_ms); setGlobalBest(isFinite(ms)?ms:null); }
-          else { setGlobalBest(null); }
+        const url7 = `${getApi()}?action=top&limit=10&days=${encodeURIComponent(TOP_DAYS)}`;
+        const res7 = await fetch(url7, { method:'GET' });
+        const d7 = await res7.json();
+        if (d7 && d7.ok && Array.isArray(d7.top)){ data=d7; ok=true; }
+      }catch(_){}
+      if (!ok){
+        try{
+          const url = `${getApi()}?action=top&limit=10`;
+          const res = await fetch(url, { method:'GET' });
+          const d = await res.json();
+          if (d && d.ok && Array.isArray(d.top)){ data=d; ok=true; }
+        }catch(_){}
+      }
+      if (ok && data){
+        serverStatus.className='pill status ok'; serverStatus.textContent='서버: 연결됨';
+        boardWrap.innerHTML = renderBoard(data.top);
+        const now = new Date(); boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
+        if (data.top.length>0){
+          const ms=Number(data.top[0].best_ms);
+          setGlobalBest(isFinite(ms)?ms:null);
+          setRotation(data.top); // <= start/refresh rotation
         } else {
-          throw new Error('bad leaderboard response');
+          setGlobalBest(null);
+          setRotation([]);
         }
-      }catch(e){
-        console.warn('fetch top failed',e);
+      } else {
+        console.warn('fetch top failed');
         boardWrap.innerHTML = '<div class="dim">랭킹을 불러오지 못했습니다.</div>';
         setGlobalBest(null);
+        setRotation([]);
         serverStatus.className='pill status err'; serverStatus.textContent='서버: 오류(조회 실패)';
       }
     }
@@ -335,6 +376,37 @@
     function setGlobalBest(ms){
       const text = (ms && isFinite(ms)) ? (ms/1000).toFixed(3)+'s' : '—';
       globalBestTime.textContent=text; bestEl.textContent=text;
+    }
+
+    function setRotation(rows){
+      // Build at most top 3 names
+      const top3 = rows.slice(0,3).map(r => (String(r.name||'').trim()) ).filter(n => n.length>0);
+      cycleData = top3;
+      if (cycleTimer){ clearInterval(cycleTimer); cycleTimer=null; }
+      if (cycleData.length === 0){
+        champPill.style.display='none';
+        champName.textContent='—';
+        return;
+      }
+      champPill.style.display='flex';
+      cycleIdx = 0;
+      renderChampionFrame(cycleIdx);
+      // Rotate every 1 second as requested
+      cycleTimer = setInterval(()=>{
+        cycleIdx = (cycleIdx + 1) % cycleData.length;
+        renderChampionFrame(cycleIdx);
+      }, 1000);
+    }
+
+    function renderChampionFrame(idx){
+      const name = cycleData[idx] || '—';
+      const rank = idx + 1;
+      champName.textContent = name;
+      champLabel.textContent = `${rank}위`;
+      // Emojis by rank
+      if (rank === 1){ champEmojiL.textContent='🎉'; champEmojiR.textContent='🎉'; }
+      else if (rank === 2){ champEmojiL.textContent='❤️'; champEmojiR.textContent='❤️'; }
+      else { champEmojiL.textContent='💪'; champEmojiR.textContent='💪'; }
     }
 
     function renderBoard(rows){
@@ -351,7 +423,7 @@
       setTimeout(()=>{
         $$('.btn-del').forEach(b=>b.addEventListener('click', async (e)=>{
           const name=e.currentTarget.getAttribute('data-name');
-          if (!confirm(`'${name}' 기록을 삭제할까요?`)) return;
+          if (!confirm(\`'\${name}' 기록을 삭제할까요?\`)) return;
           const ok = await adminDelete(name);
           if (ok){ alert('삭제되었습니다.'); fetchTop10(); } else { alert('삭제 실패(권한 또는 서버 오류)'); }
         }));
@@ -366,6 +438,7 @@
       });
       const data = await res.json();
       if (!(data && data.ok)) throw new Error('save failed');
+      // Refresh to update global best and rotation immediately
       fetchTop10();
       return data;
     }
