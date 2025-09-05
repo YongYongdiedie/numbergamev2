@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (화이트 테마 + 서버 + 랭킹 + 관리자 + 글로벌 베스트)</title>
+  <title>1→6 순서 터치 (화이트 테마 + 서버/랭킹 + 관리자 + 글로벌 베스트 + 저장 팝업)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
@@ -121,6 +121,10 @@
       font-size: clamp(36px, 18vw, 140px);
       line-height: 1;
     }
+
+    /* Save popup overlay */
+    .overlay{ position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:center; justify-content:center; z-index:20; }
+    .popup{ background:#fff; padding:20px 30px; border-radius:12px; font-size:18px; font-weight:700; color:#000; box-shadow:0 6px 20px rgba(0,0,0,0.25); }
   </style>
 </head>
 <body>
@@ -137,7 +141,7 @@
     <div class="row">
       <div class="pill">시간 <strong id="time">0.000s</strong></div>
       <div class="pill">Top1 <strong id="best">—</strong></div>
-      <div class="pill status" id="serverStatus">서버: 미설정</div>
+      <div class="pill status" id="serverStatus">서버: 확인 중…</div>
     </div>
   </div>
 
@@ -167,7 +171,7 @@
     </div>
   </div>
 
-  <!-- Leaderboard panel (admin capable) -->
+  <!-- Leaderboard panel -->
   <div class="panel" id="panel">
     <header>
       <h3>Top 10 랭킹</h3>
@@ -178,6 +182,7 @@
       </div>
     </header>
 
+    <!-- Admin login area -->
     <div class="admin-line" id="adminArea" style="display:none; margin-bottom:8px;">
       <input id="admId" placeholder="관리자 ID" inputmode="numeric" />
       <input id="admPw" placeholder="관리자 비밀번호" type="password" />
@@ -192,9 +197,12 @@
     <div class="dim" id="boardInfo" style="margin-top:6px;"></div>
   </div>
 
+  <!-- Save popup overlay -->
+  <div class="overlay" id="savePopup"><div class="popup">랭킹에 저장되었습니다.</div></div>
+
   <script>
     // API BASE
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbzN_mmkVDLnH7bBm9zppD9sFWgsrOaCX7rGlDY8fZFHM1kanacPFotifeC487T8ZP3n/exec";
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
     const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
@@ -205,7 +213,7 @@
     const hud = $('#hud');
     const grid = $('#grid');
     const timeEl = $('#time');
-    const bestEl = $('#best');           // HUD Top1 display
+    const bestEl = $('#best');                // HUD Top1 display
     const globalBestTime = $('#globalBestTime'); // Center overlay
     const msgEl = $('#msg');
     const nameInput = $('#playerName');
@@ -230,11 +238,13 @@
     const intro = $('#intro');
     const introOk = $('#introOk');
 
+    const savePopup = $('#savePopup');
+
     let next = 1;
     let running = false;
     let startTime = 0;
     let raf = null;
-    let adminCred = null;
+    let adminCred = null; // {id, pw}
     const LS_NAME = 'sixSplitPlayerName';
 
     function resizeLayout(){
@@ -256,8 +266,7 @@
       reset(false);
       updateServerStatus();
 
-      // fetch global best immediately
-      fetchTop10();
+      fetchTop10(); // also flips server status based on result
 
       requestAnimationFrame(resizeLayout);
       setTimeout(resizeLayout, 250);
@@ -278,7 +287,11 @@
       });
       saveNameBtn.addEventListener('click', () => {
         const name = nameInput.value.trim();
+        if (!name) return;
         localStorage.setItem(LS_NAME, name);
+        // show popup
+        savePopup.style.display = 'flex';
+        setTimeout(() => { savePopup.style.display = 'none'; }, 1500);
       });
       leaderBtn.addEventListener('click', async () => {
         panel.classList.add('open');
@@ -379,7 +392,12 @@
       vibrate([20, 30, 60]);
       next = 999;
 
-      // After a run, re-fetch global best (in case it improved)
+      // Save to server if name present
+      const name = nameInput.value.trim();
+      if (getApi() && name) {
+        saveBestToServer(name, Math.round(elapsed)).then(fetchTop10).catch(()=>{});
+      }
+      // Always refresh global best after a run
       fetchTop10();
     }
 
@@ -402,6 +420,51 @@
     function getApi(){
       const url = (API_BASE || '').trim();
       return url && url.startsWith('http') ? url : '';
+    }
+
+    async function fetchTop10(){
+      if (!getApi()){
+        setGlobalBest(null);
+        serverStatus.className='pill status err'; serverStatus.textContent='서버: 미설정';
+        return;
+      }
+      try {
+        const url = `${getApi()}?action=top&limit=10`;
+        const res = await fetch(url, { method: 'GET' });
+        const data = await res.json();
+        if (data && data.ok && Array.isArray(data.top)) {
+          serverStatus.className = 'pill status ok'; serverStatus.textContent = '서버: 연결됨';
+          boardWrap.innerHTML = renderBoard(data.top);
+          const now = new Date(); boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
+          if (data.top.length > 0) {
+            const ms = Number(data.top[0].best_ms);
+            setGlobalBest(isFinite(ms) ? ms : null);
+          } else {
+            setGlobalBest(null);
+          }
+        } else {
+          throw new Error('bad leaderboard response');
+        }
+      } catch (e) {
+        console.warn('fetch top failed', e);
+        boardWrap.innerHTML = '<div class="dim">랭킹을 불러오지 못했습니다.</div>';
+        setGlobalBest(null);
+        serverStatus.className='pill status err'; serverStatus.textContent='서버: 오류(조회 실패)';
+      }
+    }
+
+    async function saveBestToServer(name, ms){
+      try {
+        const res = await fetch(getApi(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, // avoid preflight
+          body: JSON.stringify({ name, ms })
+        });
+        const data = await res.json();
+        if (!(data && data.ok)) throw new Error('save failed');
+      } catch (e) {
+        console.warn('save best failed', e);
+      }
     }
 
     async function adminAuth(id, pw){
@@ -432,38 +495,6 @@
       } catch (e) {
         console.warn('admin delete failed', e);
         return false;
-      }
-    }
-
-    async function fetchTop10(){
-      if (!getApi()) {
-        setGlobalBest(null);
-        return;
-      }
-      try {
-        const url = `${getApi()}?action=top&limit=10`;
-        const res = await fetch(url, { method: 'GET' });
-        const data = await res.json();
-        if (data && data.ok && Array.isArray(data.top)) {
-          // Update leaderboard table (with admin controls)
-          boardWrap.innerHTML = renderBoard(data.top);
-          const now = new Date();
-          boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
-
-          // Set global best from first row (if any)
-          if (data.top.length > 0) {
-            const ms = Number(data.top[0].best_ms);
-            setGlobalBest(isFinite(ms) ? ms : null);
-          } else {
-            setGlobalBest(null);
-          }
-        } else {
-          throw new Error('bad leaderboard response');
-        }
-      } catch (e) {
-        console.warn('fetch top failed', e);
-        boardWrap.innerHTML = '<div class="dim">랭킹을 불러오지 못했습니다.</div>';
-        setGlobalBest(null);
       }
     }
 
