@@ -125,7 +125,7 @@
 
   <script>
     // ========= 서버 설정 =========
-    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE"; // 배포 URL 삽입 또는 ?api=로 설정
+    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbyKgc1s1_mxaOD0TjDLtkt9OLuv6rpHamht2Qw_WRe5dTV_f7HYUSM7O61qnGPq5-oq/exec"; // 배포 URL 삽입 또는 ?api=로 설정
     function getApi(){
       const p = new URLSearchParams(location.search).get('api');
       if (p) localStorage.setItem('apiBase', p);
