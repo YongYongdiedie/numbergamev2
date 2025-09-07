@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (화이트 테마 + 서버 + 랭킹 + 관리자 + 글로벌 베스트)</title>
+  <title>1→6 순서 터치 (화이트 테마 + 서버 + 랭킹)</title>
   <style>
     :root{
       --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
@@ -54,10 +54,10 @@
     @keyframes shake{ 15%, 45%, 75% { transform: translateX(-6px) } 30%, 60%, 90% { transform: translateX(6px) } }
     .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
 
-    /* Panel */
+    /* Leaderboard panel */
     .panel{
       position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5;
-      width: min(460px, 92vw);
+      width: min(420px, 92vw);
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 16px;
@@ -72,15 +72,15 @@
     }
     .panel h3{ margin:0; font-size:16px; letter-spacing:.2px }
     .panel .close{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:6px 10px; border-radius:10px; font-weight:700; }
-    .panel .admin-line{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-    .admin-line input{ border:1px solid #00000030; background:#ffffff; color:#000; border-radius:10px; padding:6px 8px; font-size:16px; }
-    .admin-line .small{ font-size:12px; color:#4b5563; }
-    .table{ width:100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-    .table th, .table td{ border-bottom:1px solid #0000001a; padding:6px 4px; text-align:left; }
+    .table{
+      width:100%; border-collapse: collapse; font-variant-numeric: tabular-nums;
+    }
+    .table th, .table td{
+      border-bottom:1px solid #0000001a; padding:6px 4px; text-align:left;
+    }
     .table th{ color:#111827; font-size:12px; }
     .table td.rank{ width:2.5ch; text-align:right; }
-    .table td.time{ text-align:right; font-weight:800; white-space:nowrap; }
-    .table td.ctrl{ width:1%; white-space:nowrap; text-align:right; }
+    .table td.time{ text-align:right; font-weight:800; }
     .dim{ color:#4b5563; font-size:12px; }
 
     /* Intro overlay */
@@ -103,24 +103,6 @@
     .intro p{ margin: 6px 0; line-height: 1.5; }
     .intro .note{ color:#16a34a; font-weight:600; } /* green accent */
     .intro .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
-
-    /* Global best in the center */
-    .globalBest{
-      position: fixed; left:50%; top:50%; transform: translate(-50%,-50%);
-      z-index: 0; pointer-events: none;
-      font-variant-numeric: tabular-nums;
-      text-align: center;
-      opacity: .1;
-    }
-    .globalBest .label{
-      font-size: clamp(12px, 3.2vw, 22px); letter-spacing:.2px;
-    }
-    .globalBest .time{
-      margin-top: 4px;
-      font-weight: 900;
-      font-size: clamp(36px, 18vw, 140px);
-      line-height: 1;
-    }
   </style>
 </head>
 <body>
@@ -136,18 +118,12 @@
     </div>
     <div class="row">
       <div class="pill">시간 <strong id="time">0.000s</strong></div>
-      <div class="pill">Top1 <strong id="best">—</strong></div>
+      <div class="pill">Best <strong id="best">—</strong></div>
       <div class="pill status" id="serverStatus">서버: 미설정</div>
     </div>
   </div>
 
   <div class="grid" id="grid" aria-label="터치 그리드 (1부터 6까지 순서대로 누르기)"></div>
-
-  <!-- Global best overlay -->
-  <div class="globalBest" id="globalBest">
-    <div class="label">GLOBAL BEST</div>
-    <div class="time" id="globalBestTime">—</div>
-  </div>
 
   <div class="toast" aria-live="polite">
     <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
@@ -167,25 +143,15 @@
     </div>
   </div>
 
-  <!-- Leaderboard panel (admin capable) -->
+  <!-- Leaderboard panel -->
   <div class="panel" id="panel">
     <header>
       <h3>Top 10 랭킹</h3>
-      <div class="admin-line">
+      <div>
         <button class="btn" id="refreshBtn" type="button">새로고침</button>
-        <button class="btn" id="adminToggle" type="button">관리자 로그인</button>
         <button class="close" id="closePanel" type="button">닫기</button>
       </div>
     </header>
-
-    <div class="admin-line" id="adminArea" style="display:none; margin-bottom:8px;">
-      <input id="admId" placeholder="관리자 ID" inputmode="numeric" />
-      <input id="admPw" placeholder="관리자 비밀번호" type="password" />
-      <button class="btn" id="admLogin" type="button">로그인</button>
-      <button class="btn" id="admLogout" type="button" style="display:none;">로그아웃</button>
-      <span class="small" id="admStatus"></span>
-    </div>
-
     <div id="boardWrap">
       <div class="dim">랭킹을 불러오는 중…</div>
     </div>
@@ -193,8 +159,9 @@
   </div>
 
   <script>
-    // API BASE
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbw9Tz-ZH3AtPpt4u_NTPhhsN5FF6pd70N521_xZTIbNQtAJI0OgqQxhnhYcWvvymIsr/exec";
+    // 1) 여기에 본인 Apps Script /exec URL을 넣으세요.
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+    // 2) (선택) 주소창에 ?api=... 로도 주입 가능. 또는 한번 넣으면 로컬에 저장.
     const PARAM_API = new URLSearchParams(location.search).get('api');
     if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
     const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
@@ -205,8 +172,7 @@
     const hud = $('#hud');
     const grid = $('#grid');
     const timeEl = $('#time');
-    const bestEl = $('#best');           // HUD Top1 display
-    const globalBestTime = $('#globalBestTime'); // Center overlay
+    const bestEl = $('#best');
     const msgEl = $('#msg');
     const nameInput = $('#playerName');
     const saveNameBtn = $('#saveNameBtn');
@@ -219,14 +185,6 @@
     const boardWrap = $('#boardWrap');
     const boardInfo = $('#boardInfo');
 
-    const adminToggle = $('#adminToggle');
-    const adminArea = $('#adminArea');
-    const admId = $('#admId');
-    const admPw = $('#admPw');
-    const admLogin = $('#admLogin');
-    const admLogout = $('#admLogout');
-    const admStatus = $('#admStatus');
-
     const intro = $('#intro');
     const introOk = $('#introOk');
 
@@ -234,7 +192,6 @@
     let running = false;
     let startTime = 0;
     let raf = null;
-    let adminCred = null;
     const LS_NAME = 'sixSplitPlayerName';
 
     function resizeLayout(){
@@ -250,14 +207,14 @@
       if (stored) nameInput.value = stored;
 
       bindHud();
-      bindAdmin();
       bindIntro();
       renderShuffled();
       reset(false);
       updateServerStatus();
 
-      // fetch global best immediately
-      fetchTop10();
+      if (getApi() && nameInput.value.trim()) {
+        fetchBestFromServer(nameInput.value.trim());
+      }
 
       requestAnimationFrame(resizeLayout);
       setTimeout(resizeLayout, 250);
@@ -279,6 +236,7 @@
       saveNameBtn.addEventListener('click', () => {
         const name = nameInput.value.trim();
         localStorage.setItem(LS_NAME, name);
+        if (getApi() && name) fetchBestFromServer(name);
       });
       leaderBtn.addEventListener('click', async () => {
         panel.classList.add('open');
@@ -287,34 +245,6 @@
       });
       refreshBtn.addEventListener('click', fetchTop10);
       closePanel.addEventListener('click', () => panel.classList.remove('open'));
-    }
-
-    function bindAdmin(){
-      adminToggle.addEventListener('click', () => {
-        adminArea.style.display = adminArea.style.display === 'none' ? 'flex' : 'none';
-      });
-      admLogin.addEventListener('click', async () => {
-        const id = admId.value.trim();
-        const pw = admPw.value.trim();
-        const ok = await adminAuth(id, pw);
-        if (ok) {
-          adminCred = { id, pw };
-          admStatus.textContent = '로그인 성공';
-          admLogout.style.display = '';
-          admLogin.style.display = 'none';
-          fetchTop10();
-        } else {
-          admStatus.textContent = '로그인 실패';
-          adminCred = null;
-        }
-      });
-      admLogout.addEventListener('click', () => {
-        adminCred = null;
-        admStatus.textContent = '로그아웃됨';
-        admLogout.style.display = 'none';
-        admLogin.style.display = '';
-        fetchTop10();
-      });
     }
 
     function renderShuffled(){
@@ -333,7 +263,7 @@
     }
 
     function onTap(e){
-      if (intro.style.display !== 'none') return;
+      if (intro.style.display !== 'none') return; // block while intro open
       const val = Number(e.currentTarget.dataset.num);
       if(val !== next){
         wrong();
@@ -379,8 +309,13 @@
       vibrate([20, 30, 60]);
       next = 999;
 
-      // After a run, re-fetch global best (in case it improved)
-      fetchTop10();
+      const name = nameInput.value.trim();
+      if (getApi() && name) {
+        saveBestToServer(name, Math.round(elapsed)).then(fetchTop10).catch(()=>{});
+      } else {
+        serverStatus.className = 'pill status err';
+        serverStatus.textContent = '서버: 미설정(저장 안 됨)';
+      }
     }
 
     function wrong(){
@@ -404,107 +339,85 @@
       return url && url.startsWith('http') ? url : '';
     }
 
-    async function adminAuth(id, pw){
+    async function fetchBestFromServer(name){
       try {
-        const res = await fetch(getApi(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: JSON.stringify({ action:'auth', admin_id:id, admin_pw:pw })
-        });
+        const url = `${getApi()}?name=${encodeURIComponent(name)}`;
+        const res = await fetch(url, { method: 'GET' });
         const data = await res.json();
-        return !!(data && data.ok);
+        if (data && data.ok) {
+          const ms = Number(data.best_ms || 0);
+          bestEl.textContent = ms ? (ms/1000).toFixed(3) + 's' : '—';
+          serverStatus.className = 'pill status ok';
+          serverStatus.textContent = '서버: 연결됨';
+        } else {
+          throw new Error('bad response');
+        }
       } catch (e) {
-        console.warn('admin auth failed', e);
-        return false;
+        console.warn('fetch best failed', e);
+        serverStatus.className = 'pill status err';
+        serverStatus.textContent = '서버: 오류(조회 실패)';
       }
     }
 
-    async function adminDelete(name){
-      if (!adminCred) return false;
+    async function saveBestToServer(name, ms){
       try {
+        // text/plain to avoid preflight
         const res = await fetch(getApi(), {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: JSON.stringify({ action:'delete', name, admin_id:adminCred.id, admin_pw:adminCred.pw })
+          body: JSON.stringify({ name, ms })
         });
         const data = await res.json();
-        return !!(data && data.ok);
+        if (data && data.ok) {
+          const best = Number(data.best_ms || 0);
+          bestEl.textContent = (best/1000).toFixed(3) + 's';
+          serverStatus.className = 'pill status ok';
+          serverStatus.textContent = '서버: 저장됨';
+        } else {
+          throw new Error('save failed');
+        }
       } catch (e) {
-        console.warn('admin delete failed', e);
-        return false;
+        console.warn('save best failed', e);
+        serverStatus.className = 'pill status err';
+        serverStatus.textContent = '서버: 오류(저장 실패)';
       }
     }
 
     async function fetchTop10(){
-      if (!getApi()) {
-        setGlobalBest(null);
-        return;
-      }
+      if (!getApi()) return;
       try {
         const url = `${getApi()}?action=top&limit=10`;
         const res = await fetch(url, { method: 'GET' });
         const data = await res.json();
         if (data && data.ok && Array.isArray(data.top)) {
-          // Update leaderboard table (with admin controls)
-          boardWrap.innerHTML = renderBoard(data.top);
+          const rows = data.top;
+          boardWrap.innerHTML = renderBoard(rows);
           const now = new Date();
           boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
-
-          // Set global best from first row (if any)
-          if (data.top.length > 0) {
-            const ms = Number(data.top[0].best_ms);
-            setGlobalBest(isFinite(ms) ? ms : null);
-          } else {
-            setGlobalBest(null);
-          }
         } else {
           throw new Error('bad leaderboard response');
         }
       } catch (e) {
         console.warn('fetch top failed', e);
         boardWrap.innerHTML = '<div class="dim">랭킹을 불러오지 못했습니다.</div>';
-        setGlobalBest(null);
       }
-    }
-
-    function setGlobalBest(ms){
-      const text = (ms && isFinite(ms)) ? (ms/1000).toFixed(3)+'s' : '—';
-      globalBestTime.textContent = text;   // center big text
-      bestEl.textContent = text;           // HUD Top1 pill
     }
 
     function renderBoard(rows){
       if (!rows.length) return '<div class="dim">아직 기록이 없습니다.</div>';
-      const admin = !!adminCred;
-      const header = `<thead><tr><th>#</th><th>이름</th><th>기록</th>${admin ? '<th>관리</th>' : ''}</tr></thead>`;
       const trs = rows.map((r, i) => {
         const s = (Number(r.best_ms)/1000).toFixed(3);
         const nm = escapeHtml(String(r.name || ''));
-        const delBtn = admin ? `<button class="btn btn-del" data-name="${nm}" type="button">삭제</button>` : '';
         return `<tr>
           <td class="rank">${i+1}</td>
           <td class="name">${nm}</td>
           <td class="time">${s}s</td>
-          ${admin ? `<td class="ctrl">${delBtn}</td>` : ''}
         </tr>`;
       }).join('');
-      const table = `<table class="table">${header}<tbody>${trs}</tbody></table>`;
-      setTimeout(() => {
-        $$('.btn-del').forEach(b => {
-          b.addEventListener('click', async (e) => {
-            const name = e.currentTarget.getAttribute('data-name');
-            if (!confirm(`'${name}' 기록을 삭제할까요?`)) return;
-            const ok = await adminDelete(name);
-            if (ok) {
-              alert('삭제되었습니다.');
-              fetchTop10();
-            } else {
-              alert('삭제 실패(권한 또는 서버 오류)');
-            }
-          });
-        });
-      }, 0);
-      return table;
+      return `<table class="table">
+        <thead><tr><th>#</th><th>이름</th><th>기록</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>`;
     }
 
     function escapeHtml(str){
