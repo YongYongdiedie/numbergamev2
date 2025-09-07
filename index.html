@@ -3,442 +3,366 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1→6 순서 터치 (화이트 테마 + 서버 + 랭킹)</title>
+  <title>1→6 순서 터치 게임</title>
   <style>
     :root{
-      --bg:#ffffff; --cell:#ffffff; --cell2:#f2f2f2;
-      --ok:#16a34a; --err:#ef4444; --ink:#000000; --muted:#555555;
-      --panel:#ffffffee; --border:#00000033;
+      --bg:#111827; --panel:#1f2937; --ink:#e5e7eb; --muted:#9ca3af;
+      --cell:#111827; --cell2:#0f172a; --ok:#10b981; --err:#ef4444; --accent:#60a5fa;
+      --border:#374151; --overlay:#00000088;
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
-    body{
-      background: var(--bg); color: var(--ink);
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
-      -webkit-tap-highlight-color: transparent; user-select:none; touch-action: manipulation; overflow: hidden;
-    }
-    .hud{
-      position: fixed; left:0; right:0; top:0; z-index: 3;
-      display:flex; flex-wrap: wrap; align-items:center; justify-content:center; gap:8px 10px;
-      padding: calc(8px + env(safe-area-inset-top)) 10px 8px;
-      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.7) 40%, transparent);
-      font-variant-numeric: tabular-nums;
-      border-bottom: 1px solid var(--border);
-    }
-    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; }
-    .pill{ background:#0000000a; border:1px solid #00000020; padding:6px 10px; border-radius:999px; }
-    .pill strong{letter-spacing:.3px}
-    .btn{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:10px 14px; border-radius:12px; font-weight:700; }
-    .name{ display:flex; gap:6px; align-items:center; background:#00000008; border:1px solid #00000020; padding:6px 10px; border-radius:999px; }
-    .name input{ background:transparent; border:none; outline:none; color:var(--ink); width:150px; font-weight:700; font-size:16px; }
-    .status{ font-size:12px; color:var(--muted); }
-    .status.ok{ color: var(--ok); } .status.err{ color: var(--err); }
-    .toast{ position: fixed; inset: auto 0 calc(8px + env(safe-area-inset-bottom)) 0; display:flex; justify-content:center; padding: 6px 0; pointer-events:none; z-index:4; }
-    .toast .box{ background:#00000033; border:1px solid #00000026; padding:8px 12px; border-radius:12px; font-variant-numeric: tabular-nums; color:#000; }
-    .good{color:var(--ok)} .bad{color:var(--err)}
-    .grid{
-      position: fixed; left:0; right:0; z-index:1;
-      display:grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr);
-    }
+    body{background:var(--bg); color:var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif}
+    .wrap{max-width:800px;margin:0 auto; padding:16px}
+    header{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px}
+    .title{font-weight:700; letter-spacing:.2px}
+    .hud{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+    .pill{padding:6px 10px;border:1px solid var(--border); border-radius:999px; background:var(--panel); font-size:12px; color:var(--muted)}
+    .pill b{color:var(--ink)}
+    .btn{cursor:pointer; user-select:none; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--panel); color:var(--ink); font-weight:600}
+    .btn:active{transform:translateY(1px)}
+    .rank-group{display:flex; align-items:center; gap:8px}
+    .ticker{min-width:120px; padding:6px 10px; border:1px dashed var(--border); border-radius:10px; color:var(--accent); background:rgba(96,165,250,0.08); font-weight:700; text-align:center}
+    .grid{display:grid; grid-template-columns:repeat(3,1fr); grid-auto-rows:120px; gap:10px; margin-top:8px}
     .cell{
       display:flex; align-items:center; justify-content:center;
-      font-size: clamp(44px, 14vw, 120px); font-weight: 900; letter-spacing: .5px;
-      border: 1px solid #00000018;
-      background: var(--cell);
-      transition: transform .02s ease, filter .2s ease, background .3s ease, outline-color .1s ease;
-      color: var(--ink);
+      background:linear-gradient(180deg, var(--cell), var(--cell2));
+      border:1px solid var(--border); border-radius:16px;
+      font-size:42px; font-weight:800; color:var(--ink);
+      box-shadow:0 2px 12px #00000033; transition:transform .05s ease, background .2s ease, box-shadow .2s ease;
+      -webkit-tap-highlight-color: transparent;
     }
-    .cell:active{ transform: scale(.985) }
-    .cell.done{ outline: 4px solid #22c55e55; filter: brightness(1.06); }
-    .grid.shake{ animation:shake .25s linear }
-    @keyframes shake{ 15%, 45%, 75% { transform: translateX(-6px) } 30%, 60%, 90% { transform: translateX(6px) } }
-    .sr-only{ position:absolute; width:1px; height:1px; clip:rect(0 0 0 0); white-space:nowrap; overflow:hidden; }
-
-    /* Leaderboard panel */
-    .panel{
-      position: fixed; right:10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index:5;
-      width: min(420px, 92vw);
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      box-shadow: 0 10px 30px #00000033;
-      padding: 10px;
-      display: none;
-      color: #000;
-    }
-    .panel.open{ display:block; }
-    .panel header{
-      display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;
-    }
-    .panel h3{ margin:0; font-size:16px; letter-spacing:.2px }
-    .panel .close{ border:1px solid #00000030; background:#00000010; color:var(--ink); padding:6px 10px; border-radius:10px; font-weight:700; }
-    .table{
-      width:100%; border-collapse: collapse; font-variant-numeric: tabular-nums;
-    }
-    .table th, .table td{
-      border-bottom:1px solid #0000001a; padding:6px 4px; text-align:left;
-    }
-    .table th{ color:#111827; font-size:12px; }
-    .table td.rank{ width:2.5ch; text-align:right; }
-    .table td.time{ text-align:right; font-weight:800; }
-    .dim{ color:#4b5563; font-size:12px; }
-
-    /* Intro overlay */
-    .intro{
-      position: fixed; inset:0; z-index: 10;
-      display:flex; align-items:center; justify-content:center;
-      background: rgba(0,0,0,.45);
-      padding: 20px;
-    }
-    .intro .sheet{
-      width: min(720px, 96vw);
-      background: #ffffff;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      box-shadow: 0 10px 30px #00000033;
-      padding: 16px;
-      color: #000;
-    }
-    .intro h2{ margin: 0 0 8px 0; font-size: 18px; }
-    .intro p{ margin: 6px 0; line-height: 1.5; }
-    .intro .note{ color:#16a34a; font-weight:600; } /* green accent */
-    .intro .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+    .cell:active{transform:scale(.98); box-shadow:0 2px 8px #00000022}
+    .cell.ok{background:linear-gradient(180deg, #064e3b, #065f46)}
+    .cell.bad{background:linear-gradient(180deg, #7f1d1d, #991b1b)}
+    .panel{margin-top:14px; padding:12px; border:1px solid var(--border); border-radius:14px; background:var(--panel)}
+    .muted{color:var(--muted)}
+    .good{color:var(--ok)}
+    .err{color:var(--err)}
+    .footer{margin-top:12px; display:flex; gap:8px; flex-wrap:wrap}
+    .list{margin:0; padding-left:16px}
+    .list li{margin:4px 0}
+    .hidden{display:none !important}
+    .right{margin-left:auto}
+    dialog::backdrop{background:var(--overlay)}
+    dialog{border:none; border-radius:16px; padding:0; overflow:hidden; background:var(--panel); color:var(--ink); box-shadow:0 20px 80px #00000088; width:min(450px, 92vw)}
+    .modal-head{padding:14px 16px; border-bottom:1px solid var(--border); font-weight:700}
+    .modal-body{padding:16px; display:grid; gap:12px}
+    .modal-foot{padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end}
+    input[type="text"]{width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#0b1220; color:var(--ink); outline:none}
+    .small{font-size:12px}
+    @media (max-width:480px){ .grid{grid-auto-rows:92px} .cell{font-size:36px} }
   </style>
 </head>
 <body>
-  <div id="hud" class="hud" aria-live="polite">
-    <div class="row">
-      <div class="name">
-        <span>이름</span>
-        <input id="playerName" placeholder="예: JI-YONG" maxlength="24" autocomplete="off" autocapitalize="none">
-        <button class="btn" id="saveNameBtn" type="button">저장</button>
-      </div>
-      <button class="btn" id="restartBtn" type="button" aria-label="다시하기">↻ 다시</button>
-      <button class="btn" id="leaderBtn" type="button" aria-label="랭킹">🏆 랭킹</button>
-    </div>
-    <div class="row">
-      <div class="pill">시간 <strong id="time">0.000s</strong></div>
-      <div class="pill">Best <strong id="best">—</strong></div>
-      <div class="pill status" id="serverStatus">서버: 미설정</div>
-    </div>
-  </div>
-
-  <div class="grid" id="grid" aria-label="터치 그리드 (1부터 6까지 순서대로 누르기)"></div>
-
-  <div class="toast" aria-live="polite">
-    <div class="box" id="msg"><span class="sr-only">힌트: </span><b>1</b>을 터치하면 시작</div>
-  </div>
-
-  <!-- Intro overlay -->
-  <div class="intro" id="intro">
-    <div class="sheet">
-      <h2>게임 안내</h2>
-      <p>1. 초록색 <span class="note">'서버:연결됨'</span>을 확인 후 시작하세요.</p>
-      <p>2. 숫자 1을 누르는 순간 타이머가 시작됩니다.(누르기 전에는 시간 흐르지 않음.)</p>
-      <p>3. 랭킹에 올리고 싶은 경우 이름을 입력하고 '저장'을 누르세요.</p>
-      <p>4. '랭킹' 버튼을 누르면 Top10 기록이 표시됩니다.</p>
-      <div class="actions">
-        <button class="btn" id="introOk" type="button">확인</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Leaderboard panel -->
-  <div class="panel" id="panel">
+  <div class="wrap">
     <header>
-      <h3>Top 10 랭킹</h3>
-      <div>
-        <button class="btn" id="refreshBtn" type="button">새로고침</button>
-        <button class="close" id="closePanel" type="button">닫기</button>
+      <div class="title">1→6 순서 터치 게임</div>
+      <div class="hud">
+        <div class="pill">시간: <b id="time">0.000s</b></div>
+        <div class="pill" id="serverState">서버: <b class="muted">미설정</b></div>
       </div>
     </header>
-    <div id="boardWrap">
-      <div class="dim">랭킹을 불러오는 중…</div>
+
+    <div class="panel">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+        <button class="btn" id="startBtn">시작</button>
+        <div class="right"></div>
+        <div class="rank-group">
+          <button class="btn" id="rankBtn">랭킹</button>
+          <div class="ticker" id="ticker">Top 1~3 로딩…</div>
+        </div>
+      </div>
+      <div id="msg" class="muted small" style="margin-top:8px">번호 1부터 6까지 순서대로 빠르게 누르세요.</div>
     </div>
-    <div class="dim" id="boardInfo" style="margin-top:6px;"></div>
+
+    <div class="grid" id="grid"></div>
+
+    <div class="panel">
+      <div style="display:flex; align-items:center; gap:8px">
+        <div class="muted">이름: </div>
+        <input type="text" id="nameInput" placeholder="기록 저장 시 사용됩니다." style="max-width:260px">
+        <div class="right"></div>
+        <button class="btn" id="apiBtn">API 설정</button>
+      </div>
+    </div>
+
+    <dialog id="confirmDlg">
+      <div class="modal-head">기록 저장</div>
+      <div class="modal-body">
+        <div>기록을 저장하시겠습니까?</div>
+        <div class="muted small">“예”를 누르면 이름 입력 후 기록이 랭킹에 반영됩니다.</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="noSaveBtn">아니오</button>
+        <button class="btn" id="yesSaveBtn">예</button>
+      </div>
+    </dialog>
+
+    <dialog id="nameDlg">
+      <div class="modal-head">이름 입력</div>
+      <div class="modal-body">
+        <input type="text" id="nameDlgInput" placeholder="예: 홍길동">
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="cancelNameBtn">취소</button>
+        <button class="btn" id="okNameBtn">저장</button>
+      </div>
+    </dialog>
+
+    <dialog id="rankDlg">
+      <div class="modal-head">Top 10 랭킹</div>
+      <div class="modal-body">
+        <ol class="list" id="rankList"></ol>
+        <div class="muted small">가장 빠른 기록 기준(개인별 최고기록).</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="closeRankBtn">닫기</button>
+      </div>
+    </dialog>
+
   </div>
 
   <script>
-    // 1) 여기에 본인 Apps Script /exec URL을 넣으세요.
-    const DEFAULT_API_BASE = "https://script.google.com/macros/s/AKfycbxrK8uvyJurGb5LP0719QWmIwRos71xyQddImNz8VTSqJbpuNVs3tGzB6BPMF7cs95t/exec";
-    // 2) (선택) 주소창에 ?api=... 로도 주입 가능. 또는 한번 넣으면 로컬에 저장.
-    const PARAM_API = new URLSearchParams(location.search).get('api');
-    if (PARAM_API) localStorage.setItem('API_BASE_URL', PARAM_API);
-    const API_BASE = PARAM_API || localStorage.getItem('API_BASE_URL') || DEFAULT_API_BASE;
+    // ========= 서버 설정 =========
+    const DEFAULT_API_BASE = "PUT_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE"; // 배포 URL 삽입 또는 ?api=로 설정
+    function getApi(){
+      const p = new URLSearchParams(location.search).get('api');
+      if (p) localStorage.setItem('apiBase', p);
+      return localStorage.getItem('apiBase') || DEFAULT_API_BASE || '';
+    }
+    function setApi(url){
+      localStorage.setItem('apiBase', url || '');
+      renderServerState();
+    }
+    async function renderServerState(){
+      const el = document.getElementById('serverState');
+      const api = getApi();
+      if (!api){ el.innerHTML = '서버: <b class="muted">미설정</b>'; return; }
+      el.innerHTML = '서버: <b style="color:'+getCss('--accent')+'">확인 중…</b>';
+      try{
+        const res = await fetch(api+'?action=top&limit=1', { method:'GET' });
+        if (res.ok){ el.innerHTML = '서버: <b style="color:'+getCss('--ok')+'">연결 OK</b>'; }
+        else{ el.innerHTML = '서버: <b class="err">오류</b>'; }
+      }catch(_){ el.innerHTML = '서버: <b class="err">오류</b>'; }
+    }
+    function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
-    const $ = s => document.querySelector(s);
-    const $$ = s => Array.from(document.querySelectorAll(s));
+    // ========= 게임 상태 =========
+    const gridEl = document.getElementById('grid');
+    const timeEl = document.getElementById('time');
+    const msgEl = document.getElementById('msg');
+    const nameInput = document.getElementById('nameInput');
+    const confirmDlg = document.getElementById('confirmDlg');
+    const nameDlg = document.getElementById('nameDlg');
+    const nameDlgInput = document.getElementById('nameDlgInput');
+    const rankDlg = document.getElementById('rankDlg');
+    const rankList = document.getElementById('rankList');
+    const tickerEl = document.getElementById('ticker');
 
-    const hud = $('#hud');
-    const grid = $('#grid');
-    const timeEl = $('#time');
-    const bestEl = $('#best');
-    const msgEl = $('#msg');
-    const nameInput = $('#playerName');
-    const saveNameBtn = $('#saveNameBtn');
-    const serverStatus = $('#serverStatus');
-
-    const panel = $('#panel');
-    const leaderBtn = $('#leaderBtn');
-    const refreshBtn = $('#refreshBtn');
-    const closePanel = $('#closePanel');
-    const boardWrap = $('#boardWrap');
-    const boardInfo = $('#boardInfo');
-
-    const intro = $('#intro');
-    const introOk = $('#introOk');
-
-    let next = 1;
-    let running = false;
     let startTime = 0;
-    let raf = null;
-    const LS_NAME = 'sixSplitPlayerName';
+    let timer = null;
+    let next = 1;
+    let tickerTimer = null;
+    let lastTop = [];
 
-    function resizeLayout(){
-      const h = hud.offsetHeight;
-      grid.style.top = h + 'px';
-      grid.style.bottom = '0px';
-    }
-    window.addEventListener('resize', resizeLayout);
-    window.addEventListener('orientationchange', () => setTimeout(resizeLayout, 200));
-
-    function init(){
-      const stored = localStorage.getItem(LS_NAME) || '';
-      if (stored) nameInput.value = stored;
-
-      bindHud();
-      bindIntro();
-      renderShuffled();
-      reset(false);
-      updateServerStatus();
-
-      if (getApi() && nameInput.value.trim()) {
-        fetchBestFromServer(nameInput.value.trim());
+    function shuffle(arr){
+      for(let i=arr.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]]=[arr[j],arr[i]];
       }
-
-      requestAnimationFrame(resizeLayout);
-      setTimeout(resizeLayout, 250);
+      return arr;
     }
 
-    function bindIntro(){
-      introOk.addEventListener('click', () => {
-        intro.style.display = 'none';
-        vibrate(10);
+    function buildGrid(){
+      // 1~6을 랜덤 배치
+      const nums = shuffle([1,2,3,4,5,6]);
+      gridEl.innerHTML = '';
+      nums.forEach(n => {
+        const d = document.createElement('div');
+        d.className = 'cell';
+        d.textContent = n;
+        d.dataset.num = String(n);
+        d.addEventListener('click', onCellClick, {passive:true});
+        gridEl.appendChild(d);
       });
+      next = 1;
+      timeEl.textContent = '0.000s';
+      msgEl.textContent = '번호 1부터 6까지 순서대로 빠르게 누르세요.';
     }
 
-    function bindHud(){
-      $('#restartBtn').addEventListener('click', () => {
-        vibrate(10);
-        renderShuffled();
-        reset(true);
-      });
-      saveNameBtn.addEventListener('click', () => {
-        const name = nameInput.value.trim();
-        localStorage.setItem(LS_NAME, name);
-        if (getApi() && name) fetchBestFromServer(name);
-      });
-      leaderBtn.addEventListener('click', async () => {
-        panel.classList.add('open');
-        boardWrap.innerHTML = '<div class="dim">랭킹을 불러오는 중…</div>';
-        await fetchTop10();
-      });
-      refreshBtn.addEventListener('click', fetchTop10);
-      closePanel.addEventListener('click', () => panel.classList.remove('open'));
-    }
-
-    function renderShuffled(){
-      const arr = [1,2,3,4,5,6].sort(() => Math.random() - 0.5);
-      grid.innerHTML = '';
-      arr.forEach(n => {
-        const btn = document.createElement('button');
-        btn.className = 'cell';
-        btn.type = 'button';
-        btn.dataset.num = String(n);
-        btn.setAttribute('aria-label', String(n));
-        btn.textContent = String(n);
-        btn.addEventListener('pointerdown', onTap, {passive:true});
-        grid.appendChild(btn);
-      });
-    }
-
-    function onTap(e){
-      if (intro.style.display !== 'none') return; // block while intro open
-      const val = Number(e.currentTarget.dataset.num);
-      if(val !== next){
-        wrong();
-        return;
-      }
-      e.currentTarget.classList.add('done');
-      if(next === 1){
-        startTimer();
-        msgEl.textContent = '진행 중…';
-      }
-      if(next === 6){
-        finish();
-        return;
-      }
-      next++;
-    }
-
-    function startTimer(){
-      running = true;
+    function start(){
+      buildGrid();
       startTime = performance.now();
-      if(raf) cancelAnimationFrame(raf);
-      const tick = () => {
-        if(!running) return;
-        const ms = performance.now() - startTime;
-        timeEl.textContent = (ms/1000).toFixed(3) + 's';
-        raf = requestAnimationFrame(tick);
-      };
-      raf = requestAnimationFrame(tick);
+      timer && clearInterval(timer);
+      timer = setInterval(()=>{
+        const t = performance.now() - startTime;
+        timeEl.textContent = (t/1000).toFixed(3)+'s';
+      }, 16);
+    }
+
+    function restart(){
+      stopTimer();
+      buildGrid();
     }
 
     function stopTimer(){
-      running = false;
-      if(raf) cancelAnimationFrame(raf);
-      raf = null;
+      timer && clearInterval(timer);
+      timer = null;
     }
 
-    function finish(){
+    function vibrate(pat){ try{ navigator.vibrate && navigator.vibrate(pat); }catch(_){} }
+
+    function onCellClick(e){
+      const n = Number(e.currentTarget.dataset.num);
+      if (n === next){
+        e.currentTarget.classList.add('ok');
+        if (next === 1) msgEl.innerHTML = '<span class="good">좋아요!</span> 계속!';
+        next++;
+        if (next === 7){
+          finish(); // 완료
+        }
+      }else{
+        e.currentTarget.classList.add('bad');
+        msgEl.innerHTML = '<span class="err">틀렸습니다.</span> 다시 시도하세요.';
+        vibrate([10,40,80]);
+      }
+    }
+
+    async function finish(){
       stopTimer();
       const elapsed = performance.now() - startTime;
-      const sec = (elapsed/1000).toFixed(3);
-      timeEl.textContent = sec + 's';
-      msgEl.innerHTML = `<span class="good">완료!</span> 기록: <b>${sec}s</b>`;
-      vibrate([20, 30, 60]);
-      next = 999;
+      const secStr = (elapsed/1000).toFixed(3);
+      timeEl.textContent = secStr + 's';
+      msgEl.innerHTML = `<span class="good">완료!</span> 기록: <b>${secStr}s</b>`;
+      vibrate([20,30,60]);
 
-      const name = nameInput.value.trim();
-      if (getApi() && name) {
-        saveBestToServer(name, Math.round(elapsed)).then(fetchTop10).catch(()=>{});
-      } else {
-        serverStatus.className = 'pill status err';
-        serverStatus.textContent = '서버: 미설정(저장 안 됨)';
+      // 1) 저장 여부 확인 모달
+      confirmDlg.showModal();
+      // 버튼 핸들
+      const onNo = () => {
+        confirmDlg.close();
+        cleanup();
+        restart(); // 저장 안 함 → 즉시 새 판, 랜덤 배치
+      };
+      const onYes = async () => {
+        confirmDlg.close();
+        // 이름 입력 모달 (기본값: 입력칸 또는 기존 입력값)
+        nameDlgInput.value = (nameInput.value || '').trim();
+        nameDlg.showModal();
+
+        const cancel = () => {
+          nameDlg.close();
+          cleanup();
+          restart(); // 취소 시도 동일하게 새 판
+        };
+        const ok = async () => {
+          const name = nameDlgInput.value.trim();
+          if (!name){
+            alert('이름을 입력해주세요.');
+            return;
+          }
+          nameDlg.close();
+          nameInput.value = name; // 기본 입력칸에도 보존
+
+          const api = getApi();
+          if (api){
+            try{
+              await fetch(api, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+                body: JSON.stringify({ action:'submit', name, best_ms: Math.round(elapsed) })
+              });
+              await fetchTop10(); // 업로드 후 랭킹 즉시 갱신
+            }catch(err){
+              console.warn('submit failed', err);
+              alert('서버 저장에 실패했습니다.');
+            }
+          }else{
+            alert('API가 설정되지 않아 저장할 수 없습니다. "API 설정" 버튼을 눌러 URL을 등록하세요.');
+          }
+          cleanup();
+          restart(); // 저장 후 새 판
+        };
+
+        document.getElementById('cancelNameBtn').onclick = cancel;
+        document.getElementById('okNameBtn').onclick = ok;
+      };
+
+      document.getElementById('noSaveBtn').onclick = onNo;
+      document.getElementById('yesSaveBtn').onclick = onYes;
+
+      function cleanup(){
+        document.getElementById('noSaveBtn').onclick = null;
+        document.getElementById('yesSaveBtn').onclick = null;
+        document.getElementById('cancelNameBtn').onclick = null;
+        document.getElementById('okNameBtn').onclick = null;
       }
     }
 
-    function wrong(){
-      grid.classList.add('shake');
-      msgEl.innerHTML = `<span class="bad">순서 오류</span> — 1부터 다시`;
-      vibrate([40, 50, 40]);
-      setTimeout(()=> grid.classList.remove('shake'), 260);
-      reset(false);
-    }
-
-    function reset(){
-      stopTimer();
-      next = 1;
-      timeEl.textContent = '0.000s';
-      $$('.cell').forEach(c => c.classList.remove('done'));
-      msgEl.innerHTML = `<b>1</b>을 터치하면 시작`;
-    }
-
-    function getApi(){
-      const url = (API_BASE || '').trim();
-      return url && url.startsWith('http') ? url : '';
-    }
-
-    async function fetchBestFromServer(name){
-      try {
-        const url = `${getApi()}?name=${encodeURIComponent(name)}`;
-        const res = await fetch(url, { method: 'GET' });
-        const data = await res.json();
-        if (data && data.ok) {
-          const ms = Number(data.best_ms || 0);
-          bestEl.textContent = ms ? (ms/1000).toFixed(3) + 's' : '—';
-          serverStatus.className = 'pill status ok';
-          serverStatus.textContent = '서버: 연결됨';
-        } else {
-          throw new Error('bad response');
-        }
-      } catch (e) {
-        console.warn('fetch best failed', e);
-        serverStatus.className = 'pill status err';
-        serverStatus.textContent = '서버: 오류(조회 실패)';
-      }
-    }
-
-    async function saveBestToServer(name, ms){
-      try {
-        // text/plain to avoid preflight
-        const res = await fetch(getApi(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: JSON.stringify({ name, ms })
-        });
-        const data = await res.json();
-        if (data && data.ok) {
-          const best = Number(data.best_ms || 0);
-          bestEl.textContent = (best/1000).toFixed(3) + 's';
-          serverStatus.className = 'pill status ok';
-          serverStatus.textContent = '서버: 저장됨';
-        } else {
-          throw new Error('save failed');
-        }
-      } catch (e) {
-        console.warn('save best failed', e);
-        serverStatus.className = 'pill status err';
-        serverStatus.textContent = '서버: 오류(저장 실패)';
-      }
-    }
-
+    // ========= 랭킹 =========
     async function fetchTop10(){
-      if (!getApi()) return;
-      try {
-        const url = `${getApi()}?action=top&limit=10`;
-        const res = await fetch(url, { method: 'GET' });
+      const api = getApi();
+      if (!api) return;
+      try{
+        const res = await fetch(api+'?action=top&limit=10');
         const data = await res.json();
-        if (data && data.ok && Array.isArray(data.top)) {
-          const rows = data.top;
-          boardWrap.innerHTML = renderBoard(rows);
-          const now = new Date();
-          boardInfo.textContent = `업데이트: ${now.toLocaleString()}`;
-        } else {
-          throw new Error('bad leaderboard response');
+        if (!data || !data.ok) return;
+        const arr = data.top || [];
+        // 리스트 채우기
+        rankList.innerHTML = '';
+        arr.forEach((r, i)=>{
+          const li = document.createElement('li');
+          const sec = (r.best_ms/1000).toFixed(3)+'s';
+          li.textContent = `${i+1}. ${r.name} — ${sec}`;
+          rankList.appendChild(li);
+        });
+        lastTop = arr.slice(0,3);
+        refreshTicker();
+      }catch(e){
+        console.warn(e);
+      }
+    }
+
+    // Top 1~3 자동회전
+    function refreshTicker(){
+      if (tickerTimer){ clearInterval(tickerTimer); tickerTimer = null; }
+      let idx = 0;
+      const show = () => {
+        if (!lastTop.length){
+          tickerEl.textContent = 'Top 1~3 없음';
+          return;
         }
-      } catch (e) {
-        console.warn('fetch top failed', e);
-        boardWrap.innerHTML = '<div class="dim">랭킹을 불러오지 못했습니다.</div>';
+        const item = lastTop[idx % lastTop.length];
+        tickerEl.textContent = `${idx%lastTop.length+1}위: ${item.name}`;
+        idx++;
+      };
+      show();
+      tickerTimer = setInterval(show, 1000); // 1초 간격
+    }
+
+    // ========= UI 이벤트 =========
+    document.getElementById('startBtn').addEventListener('click', start);
+    document.getElementById('rankBtn').addEventListener('click', async ()=>{
+      await fetchTop10();
+      rankDlg.showModal();
+    });
+    document.getElementById('closeRankBtn').addEventListener('click', ()=>rankDlg.close());
+    document.getElementById('apiBtn').addEventListener('click', ()=>{
+      const cur = getApi();
+      const url = prompt('Apps Script 웹 앱 URL을 입력하세요.\n(예: https://script.google.com/macros/s/.../exec)\n\n현재값:\n'+(cur||'(미설정)'));
+      if (url !== null){
+        setApi(url.trim());
+        fetchTop10().then(()=>refreshTicker());
       }
-    }
+    });
 
-    function renderBoard(rows){
-      if (!rows.length) return '<div class="dim">아직 기록이 없습니다.</div>';
-      const trs = rows.map((r, i) => {
-        const s = (Number(r.best_ms)/1000).toFixed(3);
-        const nm = escapeHtml(String(r.name || ''));
-        return `<tr>
-          <td class="rank">${i+1}</td>
-          <td class="name">${nm}</td>
-          <td class="time">${s}s</td>
-        </tr>`;
-      }).join('');
-      return `<table class="table">
-        <thead><tr><th>#</th><th>이름</th><th>기록</th></tr></thead>
-        <tbody>${trs}</tbody>
-      </table>`;
-    }
-
-    function escapeHtml(str){
-      return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-    }
-
-    function updateServerStatus(){
-      if (getApi()) {
-        serverStatus.className = 'pill status';
-        serverStatus.textContent = '서버: 확인 중…';
-      } else {
-        serverStatus.className = 'pill status err';
-        serverStatus.textContent = '서버: 미설정';
-      }
-    }
-
-    function vibrate(pattern){
-      if('vibrate' in navigator) navigator.vibrate(pattern);
-    }
-
-    init();
+    // ========= 초기화 =========
+    (async function init(){
+      await renderServerState();
+      buildGrid();
+      fetchTop10().then(()=>refreshTicker());
+    })();
   </script>
 </body>
 </html>
